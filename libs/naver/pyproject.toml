@@ -12,7 +12,10 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = [
+codespell = [
+    "codespell>=2.2.0,<3.0.0",
+]
+test = [
     "pytest>=8.3.5",
     "pytest-asyncio>=0.26.0",
     "setuptools>=78.1.0",
