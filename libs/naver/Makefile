@@ -19,26 +19,26 @@ test tests integration_test integration_tests:
 PYTHON_FILES=.
 MYPY_CACHE=.mypy_cache
 lint format: PYTHON_FILES=.
-lint_diff format_diff: PYTHON_FILES=$(shell git diff --relative=libs/naver --name-only --diff-filter=d master | grep -E '\.py$$|\.ipynb$$')
+lint_diff format_diff: PYTHON_FILES=$(shell git diff --relative=libs/naver --name-only --diff-filter=d main | grep -E '\.py$$|\.ipynb$$')
 lint_package: PYTHON_FILES=langchain_naver
 lint_tests: PYTHON_FILES=tests
 lint_tests: MYPY_CACHE=.mypy_cache_test
 
 lint lint_diff lint_package lint_tests:
-	uv run ruff .
-	uv run ruff format $(PYTHON_FILES) --diff
-	uv run ruff --select I $(PYTHON_FILES)
-	mkdir $(MYPY_CACHE); uv run mypy $(PYTHON_FILES) --cache-dir $(MYPY_CACHE)
+	uv run --group lint ruff .
+	uv run --group lint ruff format $(PYTHON_FILES) --diff
+	uv run --group lint ruff --select I $(PYTHON_FILES)
+	mkdir $(MYPY_CACHE); uv run --group typing mypy $(PYTHON_FILES) --cache-dir $(MYPY_CACHE)
 
 format format_diff:
-	uv run ruff format $(PYTHON_FILES)
-	uv run ruff --select I --fix $(PYTHON_FILES)
+	uv run --group lint ruff format $(PYTHON_FILES)
+	uv run --group lint ruff --select I --fix $(PYTHON_FILES)
 
 spell_check:
-	uv run codespell --toml pyproject.toml
+	uv run --group codespell codespell --toml pyproject.toml
 
 spell_fix:
-	uv run codespell --toml pyproject.toml -w
+	uv run --group codespell codespell --toml pyproject.toml -w
 
 check_imports: $(shell find langchain_naver -name '*.py')
 	uv run python ./scripts/check_imports.py $^

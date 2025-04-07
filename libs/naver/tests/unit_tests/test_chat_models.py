@@ -14,8 +14,8 @@ from langchain_core.messages import (
 )
 from pydantic import SecretStr
 
-from langchain_naver.chat_models import ChatClovaX
 from langchain_naver.chat_models import (
+    ChatClovaX,
     _convert_message_to_naver_chat_message,
     _convert_naver_chat_message_to_message,
 )
