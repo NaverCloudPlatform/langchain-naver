@@ -18,9 +18,10 @@ codespell = [
     "codespell>=2.2.0,<3.0.0",
 ]
 test = [
-    "pytest>=8.3.5",
-    "pytest-asyncio>=0.26.0",
-    "setuptools>=78.1.0",
+    "pytest>=7.3.0",
+    "pytest-asyncio>=0.21.1",
+    "syrupy>=4.0.2",
+    "pytest-watcher>=0.3.4",
 ]
 test-integration = [
     { include-group = "test" }
@@ -32,10 +33,19 @@ typing = [
     "mypy>=1.10,<1.11",
     "types-requests>=2.28.11.5,<3.0.0.0",
 ]
+dev = [
+    "setuptools>=78.1.0",
+]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-asyncio_default_fixture_loop_scope = "function"
+addopts = "--snapshot-warn-unused --strict-markers --strict-config --durations=5"
+asyncio_default_fixture_loop_scope="session"
+markers = [
+  "requires: mark tests as requiring a specific library",
+  "asyncio: mark tests as requiring asyncio",
+  "compile: mark placeholder test used to compile integration tests without running them",
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "T201"]

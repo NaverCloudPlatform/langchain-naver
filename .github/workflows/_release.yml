@@ -166,6 +166,7 @@ jobs:
       - name: Run integration tests
         env:
           NCP_CLOVASTUDIO_API_KEY: ${{ secrets.NCP_CLOVASTUDIO_API_KEY }}
+          NCP_CLOVASTUDIO_API_BASE_URL: ${{ secrets.NCP_CLOVASTUDIO_API_BASE_URL }}
         run: |
           uv sync --group test --group test_integration
           make integration_tests
