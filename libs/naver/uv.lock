@@ -414,6 +414,11 @@ test = [
     { name = "pytest-asyncio" },
     { name = "setuptools" },
 ]
+test-integration = [
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "setuptools" },
+]
 typing = [
     { name = "mypy" },
     { name = "types-requests" },
@@ -430,6 +435,11 @@ requires-dist = [
 codespell = [{ name = "codespell", specifier = ">=2.2.0,<3.0.0" }]
 lint = [{ name = "ruff", specifier = ">=0.1.5,<0.2.0" }]
 test = [
+    { name = "pytest", specifier = ">=8.3.5" },
+    { name = "pytest-asyncio", specifier = ">=0.26.0" },
+    { name = "setuptools", specifier = ">=78.1.0" },
+]
+test-integration = [
     { name = "pytest", specifier = ">=8.3.5" },
     { name = "pytest-asyncio", specifier = ">=0.26.0" },
     { name = "setuptools", specifier = ">=78.1.0" },
