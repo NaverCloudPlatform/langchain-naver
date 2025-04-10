@@ -1,11 +1,24 @@
-import logging
-from typing import Any, Dict, List, Optional, cast
+from __future__ import annotations
 
-import httpx
+import logging
+import warnings
+from typing import (
+    Any,
+    Dict,
+    List,
+    Literal,
+    Mapping,
+    Optional,
+    Sequence,
+    Set,
+    Tuple,
+    Union,
+)
+
+import openai
 from langchain_core.embeddings import Embeddings
-from langchain_core.utils import convert_to_secret_str, get_from_env
+from langchain_core.utils import from_env, get_pydantic_field_names, secret_from_env
 from pydantic import (
-    AliasChoices,
     BaseModel,
     ConfigDict,
     Field,
@@ -14,223 +27,253 @@ from pydantic import (
 )
 from typing_extensions import Self
 
-_DEFAULT_BASE_URL = "https://clovastudio.apigw.ntruss.com"
-_DEFAULT_BASE_URL_ON_NEW_API_KEY = "https://clovastudio.stream.ntruss.com"
-
 logger = logging.getLogger(__name__)
 
-
-def _raise_on_error(response: httpx.Response) -> None:
-    """Raise an error if the response is an error."""
-    if httpx.codes.is_error(response.status_code):
-        error_message = response.read().decode("utf-8")
-        raise httpx.HTTPStatusError(
-            f"Error response {response.status_code} "
-            f"while fetching {response.url}: {error_message}",
-            request=response.request,
-            response=response,
-        )
-
-
-async def _araise_on_error(response: httpx.Response) -> None:
-    """Raise an error if the response is an error."""
-    if httpx.codes.is_error(response.status_code):
-        error_message = (await response.aread()).decode("utf-8")
-        raise httpx.HTTPStatusError(
-            f"Error response {response.status_code} "
-            f"while fetching {response.url}: {error_message}",
-            request=response.request,
-            response=response,
-        )
+DEFAULT_EMBED_BATCH_SIZE = 10
+MAX_EMBED_BATCH_SIZE = 100
 
 
 class ClovaXEmbeddings(BaseModel, Embeddings):
-    """`NCP ClovaStudio` Embedding API.
+    """ClovaXEmbeddings embedding model.
 
-    following environment variables set or passed in constructor in lower case:
-    - ``NCP_CLOVASTUDIO_API_KEY``
-    - ``NCP_APIGW_API_KEY``
-    - ``NCP_CLOVASTUDIO_APP_ID``
+    To use, set the environment variable `NCP_CLOVASTUDIO_API_KEY` with your API key or
+    pass it as a named parameter to the constructor.
 
     Example:
         .. code-block:: python
 
-            from langchain_community import ClovaXEmbeddings
+            from langchain_naver import ClovaXEmbeddings
 
-            model = ClovaXEmbeddings(model="clir-emb-dolphin")
-            output = embedding.embed_documents(documents)
-    """  # noqa: E501
+            model = ClovaXEmbeddings(model='clir-emb-dolphin')
+    """
 
-    client: Optional[httpx.Client] = Field(default=None)  #: :meta private:
-    async_client: Optional[httpx.AsyncClient] = Field(default=None)  #: :meta private:
-
-    ncp_clovastudio_api_key: Optional[SecretStr] = Field(default=None, alias="api_key")
+    client: Any = Field(default=None, exclude=True)  #: :meta private:
+    async_client: Any = Field(default=None, exclude=True)  #: :meta private:
+    model: str = Field(...)
+    """Embeddings model name to use. Do not add suffixes like `-query` and `-passage`.
+    Instead, use 'clir-emb-dolphin' for example.
+    """
+    dimensions: Optional[int] = None
+    """The number of dimensions the resulting output embeddings should have.
+    
+    Not yet supported. 
+    """
+    ncp_clovastudio_api_key: SecretStr = Field(
+        default_factory=secret_from_env(
+            "NCP_CLOVASTUDIO_API_KEY",
+            error_message=(
+                "You must specify an api key. "
+                "You can pass it an argument as `api_key=...` or "
+                "set the environment variable `NCP_CLOVASTUDIO_API_KEY`."
+            ),
+        ),
+        alias="api_key",
+    )
     """Automatically inferred from env are `NCP_CLOVASTUDIO_API_KEY` if not provided."""
-
-    ncp_apigw_api_key: Optional[SecretStr] = Field(default=None, alias="apigw_api_key")
-    """Automatically inferred from env are `NCP_APIGW_API_KEY` if not provided."""
-
-    base_url: Optional[str] = Field(default=None, alias="base_url")
-    """
-    Automatically inferred from env are  `NCP_CLOVASTUDIO_API_BASE_URL` if not provided.
-    """
-
-    app_id: Optional[str] = Field(default=None)
-    service_app: bool = Field(
-        default=False,
-        description="false: use testapp, true: use service app on NCP Clova Studio",
+    naver_api_base: Optional[str] = Field(
+        default_factory=from_env(
+            "NCP_CLOVASTUDIO_API_BASE_URL", default="https://clovastudio.stream.ntruss.com/v1/openai"
+        ),
+        alias="base_url",
     )
-    model_name: str = Field(
-        default="clir-emb-dolphin",
-        validation_alias=AliasChoices("model_name", "model"),
-        description="NCP ClovaStudio embedding model name",
+    """Endpoint URL to use."""
+    embedding_ctx_length: int = 4096
+    """The maximum number of tokens to embed at once.
+    
+    Not yet supported.
+    """
+    embed_batch_size: int = DEFAULT_EMBED_BATCH_SIZE
+    allowed_special: Union[Literal["all"], Set[str]] = set()
+    """Not yet supported."""
+    disallowed_special: Union[Literal["all"], Set[str], Sequence[str]] = "all"
+    """Not yet supported."""
+    chunk_size: int = 1000
+    """Maximum number of texts to embed in each batch.
+    
+    Not yet supported.
+    """
+    max_retries: int = 2
+    """Maximum number of retries to make when generating."""
+    request_timeout: Optional[Union[float, Tuple[float, float], Any]] = Field(
+        default=None, alias="timeout"
+    )
+    """Timeout for requests to Upstage embedding API. Can be float, httpx.Timeout or
+        None."""
+    show_progress_bar: bool = False
+    """Whether to show a progress bar when embedding.
+    
+    Not yet supported.
+    """
+    model_kwargs: Dict[str, Any] = Field(default_factory=dict)
+    """Holds any model parameters valid for `create` call not explicitly specified."""
+    skip_empty: bool = False
+    """Whether to skip empty strings when embedding or raise an error.
+    Defaults to not skipping.
+    
+    Not yet supported."""
+    default_headers: Union[Mapping[str, str], None] = None
+    default_query: Union[Mapping[str, object], None] = None
+    # Configure a custom httpx client. See the
+    # [httpx documentation](https://www.python-httpx.org/api/#client) for more details.
+    http_client: Union[Any, None] = None
+    """Optional httpx.Client. Only used for sync invocations. Must specify 
+        http_async_client as well if you'd like a custom client for async invocations.
+    """
+    http_async_client: Union[Any, None] = None
+    """Optional httpx.AsyncClient. Only used for async invocations. Must specify 
+        http_client as well if you'd like a custom client for sync invocations."""
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+        protected_namespaces=(),
     )
 
-    timeout: int = Field(gt=0, default=60)
+    @model_validator(mode="before")
+    @classmethod
+    def build_extra(cls, values: Dict[str, Any]) -> Any:
+        """Build extra kwargs from additional params that were passed in."""
+        all_required_field_names = get_pydantic_field_names(cls)
+        extra = values.get("model_kwargs", {})
+        for field_name in list(values):
+            if field_name in extra:
+                raise ValueError(f"Found {field_name} supplied twice.")
+            if field_name not in all_required_field_names:
+                warnings.warn(
+                    f"""WARNING! {field_name} is not default parameter.
+                    {field_name} was transferred to model_kwargs.
+                    Please confirm that {field_name} is what you intended."""
+                )
+                extra[field_name] = values.pop(field_name)
 
-    model_config = ConfigDict(arbitrary_types_allowed=True, protected_namespaces=())
-
-    @property
-    def lc_secrets(self) -> Dict[str, str]:
-        if not self._is_new_api_key():
-            return {
-                "ncp_clovastudio_api_key": "NCP_CLOVASTUDIO_API_KEY",
-            }
-        else:
-            return {
-                "ncp_clovastudio_api_key": "NCP_CLOVASTUDIO_API_KEY",
-                "ncp_apigw_api_key": "NCP_APIGW_API_KEY",
-            }
-
-    @property
-    def _api_url(self) -> str:
-        """GET embedding api url"""
-        app_type = "serviceapp" if self.service_app else "testapp"
-        model_name = self.model_name if self.model_name != "bge-m3" else "v2"
-        if self._is_new_api_key():
-            return f"{self.base_url}/{app_type}/v1/api-tools/embedding/{model_name}"
-        else:
-            return (
-                f"{self.base_url}/{app_type}"
-                f"/v1/api-tools/embedding/{model_name}/{self.app_id}"
+        invalid_model_kwargs = all_required_field_names.intersection(extra.keys())
+        if invalid_model_kwargs:
+            raise ValueError(
+                f"Parameters {invalid_model_kwargs} should be specified explicitly. "
+                f"Instead they were passed in as part of `model_kwargs` parameter."
             )
+
+        values["model_kwargs"] = extra
+        return values
 
     @model_validator(mode="after")
-    def validate_model_after(self) -> Self:
-        if not self.ncp_clovastudio_api_key:
-            self.ncp_clovastudio_api_key = convert_to_secret_str(
-                get_from_env("ncp_clovastudio_api_key", "NCP_CLOVASTUDIO_API_KEY")
-            )
+    def validate_environment(self) -> Self:
+        """Validate that api key and python package exists in environment."""
 
-        if self._is_new_api_key():
-            self._init_fields_on_new_api_key()
-        else:
-            self._init_fields_on_old_api_key()
-
-        if not self.base_url:
-            raise ValueError("base_url dose not exist.")
-
-        if not self.client:
-            self.client = httpx.Client(
-                base_url=self.base_url,
-                headers=self.default_headers(),
-                timeout=self.timeout,
-            )
-
-        if not self.async_client and self.base_url:
-            self.async_client = httpx.AsyncClient(
-                base_url=self.base_url,
-                headers=self.default_headers(),
-                timeout=self.timeout,
-            )
-
+        client_params: dict = {
+            "api_key": (
+                self.ncp_clovastudio_api_key.get_secret_value()
+                if self.ncp_clovastudio_api_key
+                else None
+            ),
+            "base_url": self.naver_api_base,
+            "timeout": self.request_timeout,
+            "max_retries": self.max_retries,
+            "default_headers": self.default_headers,
+            "default_query": self.default_query,
+        }
+        if not (self.client or None):
+            sync_specific: dict = {"http_client": self.http_client}
+            self.client = openai.OpenAI(**client_params, **sync_specific).embeddings
+        if not (self.async_client or None):
+            async_specific: dict = {"http_client": self.http_async_client}
+            self.async_client = openai.AsyncOpenAI(
+                **client_params, **async_specific
+            ).embeddings
         return self
 
-    def _is_new_api_key(self) -> bool:
-        if self.ncp_clovastudio_api_key:
-            return self.ncp_clovastudio_api_key.get_secret_value().startswith("nv-")
-        else:
-            return False
+    @property
+    def _invocation_params(self) -> Dict[str, Any]:
+        self.model = self.model.replace("-query", "").replace("-passage", "")
 
-    def _init_fields_on_new_api_key(self) -> None:
-        if not self.base_url:
-            self.base_url = get_from_env(
-                "base_url",
-                "NCP_CLOVASTUDIO_API_BASE_URL",
-                _DEFAULT_BASE_URL_ON_NEW_API_KEY,
-            )
-
-    def _init_fields_on_old_api_key(self) -> None:
-        if not self.ncp_apigw_api_key:
-            self.ncp_apigw_api_key = convert_to_secret_str(
-                get_from_env("ncp_apigw_api_key", "NCP_APIGW_API_KEY", "")
-            )
-        if not self.base_url:
-            self.base_url = get_from_env(
-                "base_url", "NCP_CLOVASTUDIO_API_BASE_URL", _DEFAULT_BASE_URL
-            )
-        if not self.app_id:
-            self.app_id = get_from_env("app_id", "NCP_CLOVASTUDIO_APP_ID")
-
-    def default_headers(self) -> Dict[str, Any]:
-        headers = {
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-        }
-
-        clovastudio_api_key = (
-            self.ncp_clovastudio_api_key.get_secret_value()
-            if self.ncp_clovastudio_api_key
-            else None
-        )
-
-        if self._is_new_api_key():
-            ### headers on new api key
-            headers["Authorization"] = f"Bearer {clovastudio_api_key}"
-        else:
-            ### headers on old api key
-            if clovastudio_api_key:
-                headers["X-NCP-CLOVASTUDIO-API-KEY"] = clovastudio_api_key
-
-            apigw_api_key = (
-                self.ncp_apigw_api_key.get_secret_value()
-                if self.ncp_apigw_api_key
-                else None
-            )
-            if apigw_api_key:
-                headers["X-NCP-APIGW-API-KEY"] = apigw_api_key
-
-        return headers
-
-    def _embed_text(self, text: str) -> List[float]:
-        payload = {"text": text}
-        client = cast(httpx.Client, self.client)
-        response = client.post(url=self._api_url, json=payload)
-        _raise_on_error(response)
-        return response.json()["result"]["embedding"]
-
-    async def _aembed_text(self, text: str) -> List[float]:
-        payload = {"text": text}
-        async_client = cast(httpx.AsyncClient, self.async_client)
-        response = await async_client.post(url=self._api_url, json=payload)
-        await _araise_on_error(response)
-        return response.json()["result"]["embedding"]
+        params: Dict = {"model": self.model, **self.model_kwargs}
+        if self.dimensions is not None:
+            params["dimensions"] = self.dimensions
+        return params
 
     def embed_documents(self, texts: List[str]) -> List[List[float]]:
+        """Embed a list of document texts using passage model.
+
+        Args:
+            texts: The list of texts to embed.
+
+        Returns:
+            List of embeddings, one for each text.
+        """
+        assert (
+            self.embed_batch_size <= MAX_EMBED_BATCH_SIZE
+        ), f"The embed_batch_size should not be larger than {MAX_EMBED_BATCH_SIZE}."
+        if not texts:
+            return []
+        params = self._invocation_params
+        params["model"] = params["model"] + "-passage"
         embeddings = []
-        for text in texts:
-            embeddings.append(self._embed_text(text))
+
+        batch_size = min(self.embed_batch_size, len(texts))
+        for i in range(0, len(texts), batch_size):
+            batch = texts[i : i + batch_size]
+            data = self.client.create(input=batch, **params).data
+            embeddings.extend([r.embedding for r in data])
+
         return embeddings
 
     def embed_query(self, text: str) -> List[float]:
-        return self._embed_text(text)
+        """Embed query text using query model.
+
+        Args:
+            text: The text to embed.
+
+        Returns:
+            Embedding for the text.
+        """
+        params = self._invocation_params
+        params["model"] = params["model"] + "-query"
+
+        response = self.client.create(input=text, **params)
+
+        if not isinstance(response, dict):
+            response = response.model_dump()
+        return response["data"][0]["embedding"]
 
     async def aembed_documents(self, texts: List[str]) -> List[List[float]]:
+        """Embed a list of document texts using passage model asynchronously.
+
+        Args:
+            texts: The list of texts to embed.
+
+        Returns:
+            List of embeddings, one for each text.
+        """
+        assert (
+            self.embed_batch_size <= MAX_EMBED_BATCH_SIZE
+        ), f"The embed_batch_size should not be larger than {MAX_EMBED_BATCH_SIZE}."
+        if not texts:
+            return []
+        params = self._invocation_params
+        params["model"] = params["model"] + "-passage"
         embeddings = []
-        for text in texts:
-            embedding = await self._aembed_text(text)
-            embeddings.append(embedding)
+
+        batch_size = min(self.embed_batch_size, len(texts))
+        for i in range(0, len(texts), batch_size):
+            batch = texts[i : i + batch_size]
+            response = await self.async_client.create(input=batch, **params)
+            embeddings.extend([r.embedding for r in response.data])
         return embeddings
 
     async def aembed_query(self, text: str) -> List[float]:
-        return await self._aembed_text(text)
+        """Asynchronous Embed query text using query model.
+
+        Args:
+            text: The text to embed.
+
+        Returns:
+            Embedding for the text.
+        """
+        params = self._invocation_params
+        params["model"] = params["model"] + "-query"
+
+        response = await self.async_client.create(input=text, **params)
+
+        if not isinstance(response, dict):
+            response = response.model_dump()
+        return response["data"][0]["embedding"]

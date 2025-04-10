@@ -1,275 +1,81 @@
-import logging
+from __future__ import annotations
+
+from operator import itemgetter
 from typing import (
     Any,
-    AsyncContextManager,
-    AsyncIterator,
-    Callable,
     Dict,
-    Iterator,
     List,
+    Literal,
     Optional,
+    Sequence,
     Tuple,
-    Type,
-    Union,
     cast,
+    overload,
 )
 
-import httpx
-from httpx_sse import SSEError
+import openai
 from langchain_core.callbacks import (
     AsyncCallbackManagerForLLMRun,
     CallbackManagerForLLMRun,
 )
-from langchain_core.language_models.chat_models import BaseChatModel, LangSmithParams
-from langchain_core.language_models.llms import create_base_retry_decorator
-from langchain_core.messages import (
-    AIMessage,
-    AIMessageChunk,
-    BaseMessage,
-    BaseMessageChunk,
-    ChatMessage,
-    ChatMessageChunk,
-    HumanMessage,
-    HumanMessageChunk,
-    SystemMessage,
-    SystemMessageChunk,
+from langchain_core.language_models import LanguageModelInput
+from langchain_core.language_models.chat_models import (
+    LangSmithParams,
+    agenerate_from_stream,
+    generate_from_stream,
 )
-from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
-from langchain_core.utils import convert_to_secret_str, get_from_env
-from pydantic import (
-    AliasChoices,
-    ConfigDict,
-    Field,
-    SecretStr,
-    model_validator,
+from langchain_core.messages import BaseMessage, HumanMessage
+from langchain_core.output_parsers.base import OutputParserLike
+from langchain_core.output_parsers.openai_tools import (
+    JsonOutputKeyToolsParser,
+    PydanticToolsParser,
 )
+from langchain_core.outputs import ChatResult
+from langchain_core.runnables import Runnable, RunnableMap, RunnablePassthrough
+from langchain_core.utils import from_env, secret_from_env
+from langchain_core.utils.function_calling import convert_to_openai_tool
+from langchain_openai.chat_models.base import (
+    BaseChatOpenAI,
+    _AllReturnType,
+    _convert_message_to_dict,
+    _DictOrPydantic,
+    _DictOrPydanticClass,
+    _is_pydantic_class,
+)
+from pydantic import Field, SecretStr, model_validator
 from typing_extensions import Self
 
-_DEFAULT_BASE_URL = "https://clovastudio.stream.ntruss.com"
 
-logger = logging.getLogger(__name__)
+class ChatClovaX(BaseChatOpenAI):
+    """ChatClovaX chat model.
 
-
-def _convert_chunk_to_message_chunk(
-    sse: Any, default_class: Type[BaseMessageChunk]
-) -> BaseMessageChunk:
-    sse_data = sse.json()
-    if sse.event == "result":
-        response_metadata = _sse_data_to_response_metadata(sse_data)
-        return AIMessageChunk(content="", response_metadata=response_metadata)
-
-    message = sse_data.get("message")
-    role = message.get("role")
-    content = message.get("content") or ""
-    if role == "user" or default_class == HumanMessageChunk:
-        return HumanMessageChunk(content=content)
-    elif role == "assistant" or default_class == AIMessageChunk:
-        return AIMessageChunk(content=content)
-    elif role == "system" or default_class == SystemMessageChunk:
-        return SystemMessageChunk(content=content)
-    elif role or default_class == ChatMessageChunk:
-        return ChatMessageChunk(content=content, role=role)
-    else:
-        return default_class(content=content)  # type: ignore[call-arg]
-
-
-def _sse_data_to_response_metadata(sse_data: Dict) -> Dict[str, Any]:
-    response_metadata = {}
-    if "stopReason" in sse_data:
-        response_metadata["stop_reason"] = sse_data["stopReason"]
-    if "inputLength" in sse_data:
-        response_metadata["input_length"] = sse_data["inputLength"]
-    if "outputLength" in sse_data:
-        response_metadata["output_length"] = sse_data["outputLength"]
-    if "seed" in sse_data:
-        response_metadata["seed"] = sse_data["seed"]
-    if "aiFilter" in sse_data:
-        response_metadata["ai_filter"] = sse_data["aiFilter"]
-    return response_metadata
-
-
-def _convert_message_to_naver_chat_message(
-    message: BaseMessage,
-) -> Dict:
-    if isinstance(message, ChatMessage):
-        return dict(role=message.role, content=message.content)
-    elif isinstance(message, HumanMessage):
-        return dict(role="user", content=message.content)
-    elif isinstance(message, SystemMessage):
-        return dict(role="system", content=message.content)
-    elif isinstance(message, AIMessage):
-        return dict(role="assistant", content=message.content)
-    else:
-        logger.warning(
-            "FunctionMessage, ToolMessage not yet supported "
-            "(https://api.ncloud-docs.com/docs/clovastudio-chatcompletions)"
-        )
-        raise ValueError(f"Got unknown type {message}")
-
-
-def _convert_naver_chat_message_to_message(
-    _message: Dict,
-) -> BaseMessage:
-    role = _message["role"]
-    assert role in (
-        "assistant",
-        "system",
-        "user",
-    ), f"Expected role to be 'assistant', 'system', 'user', got {role}"
-    content = cast(str, _message["content"])
-    additional_kwargs: Dict = {}
-
-    if role == "user":
-        return HumanMessage(
-            content=content,
-            additional_kwargs=additional_kwargs,
-        )
-    elif role == "system":
-        return SystemMessage(
-            content=content,
-            additional_kwargs=additional_kwargs,
-        )
-    elif role == "assistant":
-        return AIMessage(
-            content=content,
-            additional_kwargs=additional_kwargs,
-        )
-    else:
-        logger.warning("Got unknown role %s", role)
-        raise ValueError(f"Got unknown role {role}")
-
-
-async def _aiter_sse(
-    event_source_mgr: AsyncContextManager[Any],
-) -> AsyncIterator[Dict]:
-    """Iterate over the server-sent events."""
-    async with event_source_mgr as event_source:
-        await _araise_on_error(event_source.response)
-        async for sse in event_source.aiter_sse():
-            event_data = sse.json()
-            if sse.event == "signal" and event_data.get("data", {}) == "[DONE]":
-                return
-            if sse.event == "error":
-                raise SSEError(message=sse.data)
-            yield sse
-
-
-def _raise_on_error(response: httpx.Response) -> None:
-    """Raise an error if the response is an error."""
-    if httpx.codes.is_error(response.status_code):
-        error_message = response.read().decode("utf-8")
-        raise httpx.HTTPStatusError(
-            f"Error response {response.status_code} "
-            f"while fetching {response.url}: {error_message}",
-            request=response.request,
-            response=response,
-        )
-
-
-async def _araise_on_error(response: httpx.Response) -> None:
-    """Raise an error if the response is an error."""
-    if httpx.codes.is_error(response.status_code):
-        error_message = (await response.aread()).decode("utf-8")
-        raise httpx.HTTPStatusError(
-            f"Error response {response.status_code} "
-            f"while fetching {response.url}: {error_message}",
-            request=response.request,
-            response=response,
-        )
-
-
-class ChatClovaX(BaseChatModel):
-    """`NCP ClovaStudio` Chat Completion API.
-
-    following environment variables set or passed in constructor in lower case:
-    - ``NCP_CLOVASTUDIO_API_KEY``
-    - ``NCP_APIGW_API_KEY``
+    To use, you should have the environment variable `NCP_CLOVASTUDIO_API_KEY`
+    set with your API key or pass it as a named parameter to the constructor.
 
     Example:
         .. code-block:: python
 
-            from langchain_core.messages import HumanMessage
-
-            from langchain_community import ChatClovaX
+            from langchain_naver import ChatClovaX
 
             model = ChatClovaX()
-            model.invoke([HumanMessage(content="Come up with 10 names for a song about parrots.")])
-    """  # noqa: E501
-
-    client: Optional[httpx.Client] = Field(default=None)  #: :meta private:
-    async_client: Optional[httpx.AsyncClient] = Field(default=None)  #: :meta private:
-
-    model_name: str = Field(
-        default="HCX-003",
-        validation_alias=AliasChoices("model_name", "model"),
-        description="NCP ClovaStudio chat model name",
-    )
-    task_id: Optional[str] = Field(
-        default=None, description="NCP Clova Studio chat model tuning task ID"
-    )
-    service_app: bool = Field(
-        default=False,
-        description="false: use testapp, true: use service app on NCP Clova Studio",
-    )
-
-    ncp_clovastudio_api_key: Optional[SecretStr] = Field(default=None, alias="api_key")
-    """Automatically inferred from env are `NCP_CLOVASTUDIO_API_KEY` if not provided."""
-
-    ncp_apigw_api_key: Optional[SecretStr] = Field(default=None, alias="apigw_api_key")
-    """Automatically inferred from env are `NCP_APIGW_API_KEY` if not provided."""
-
-    base_url: str = Field(default="", alias="base_url")
     """
-    Automatically inferred from env are `NCP_CLOVASTUDIO_API_BASE_URL` if not provided.
-    """
-
-    temperature: Optional[float] = Field(gt=0.0, le=1.0, default=0.5)
-    top_k: Optional[int] = Field(ge=0, le=128, default=0)
-    top_p: Optional[float] = Field(ge=0, le=1.0, default=0.8)
-    repeat_penalty: Optional[float] = Field(gt=0.0, le=10, default=5.0)
-    max_tokens: Optional[int] = Field(ge=0, le=4096, default=100)
-    stop_before: Optional[list[str]] = Field(default=None, alias="stop")
-    include_ai_filters: Optional[bool] = Field(default=False)
-    seed: Optional[int] = Field(ge=0, le=4294967295, default=0)
-
-    timeout: int = Field(gt=0, default=90)
-    max_retries: int = Field(ge=1, default=2)
-
-    model_config = ConfigDict(populate_by_name=True, protected_namespaces=())
-
-    @property
-    def _default_params(self) -> Dict[str, Any]:
-        """Get the default parameters for calling the API."""
-        defaults = {
-            "temperature": self.temperature,
-            "topK": self.top_k,
-            "topP": self.top_p,
-            "repeatPenalty": self.repeat_penalty,
-            "maxTokens": self.max_tokens,
-            "stopBefore": self.stop_before,
-            "includeAiFilters": self.include_ai_filters,
-            "seed": self.seed,
-        }
-        filtered = {k: v for k, v in defaults.items() if v is not None}
-        return filtered
-
-    @property
-    def _identifying_params(self) -> Dict[str, Any]:
-        """Get the identifying parameters."""
-        self._default_params["model_name"] = self.model_name
-        return self._default_params
 
     @property
     def lc_secrets(self) -> Dict[str, str]:
-        if not self._is_new_api_key():
-            return {
-                "ncp_clovastudio_api_key": "NCP_CLOVASTUDIO_API_KEY",
-            }
-        else:
-            return {
-                "ncp_clovastudio_api_key": "NCP_CLOVASTUDIO_API_KEY",
-                "ncp_apigw_api_key": "NCP_APIGW_API_KEY",
-            }
+        return {"ncp_clovastudio_api_key": "NCP_CLOVASTUDIO_API_KEY"}
+
+    @classmethod
+    def get_lc_namespace(cls) -> List[str]:
+        return ["langchain", "chat_models", "naver"]
+
+    @property
+    def lc_attributes(self) -> Dict[str, Any]:
+        attributes: Dict[str, Any] = {}
+
+        if self.naver_api_base:
+            attributes["naver_api_base"] = self.naver_api_base
+
+        return attributes
 
     @property
     def _llm_type(self) -> str:
@@ -284,198 +90,111 @@ class ChatClovaX(BaseChatModel):
         params["ls_provider"] = "naver"
         return params
 
-    @property
-    def _client_params(self) -> Dict[str, Any]:
-        """Get the parameters used for the client."""
-        return self._default_params
-
-    @property
-    def _api_url(self) -> str:
-        """GET chat completion api url"""
-        app_type = "serviceapp" if self.service_app else "testapp"
-
-        if self.task_id:
-            return (
-                f"{self.base_url}/{app_type}/v1/tasks/{self.task_id}/chat-completions"
-            )
-        else:
-            return f"{self.base_url}/{app_type}/v1/chat-completions/{self.model_name}"
+    model_name: str = Field(default="HCX-003", alias="model")
+    """Model name to use."""
+    ncp_clovastudio_api_key: SecretStr = Field(
+        default_factory=secret_from_env(
+            "NCP_CLOVASTUDIO_API_KEY",
+            error_message=(
+                "You must specify an api key. "
+                "You can pass it an argument as `api_key=...` or "
+                "set the environment variable `NCP_CLOVASTUDIO_API_KEY`."
+            ),
+        ),
+        alias="api_key",
+    )
+    """Automatically inferred from env are `NCP_CLOVASTUDIO_API_KEY` if not provided."""
+    naver_api_base: Optional[str] = Field(
+        default_factory=from_env(
+            "NCP_CLOVASTUDIO_API_BASE_URL", default="https://clovastudio.stream.ntruss.com/v1/openai"
+        ),
+        alias="base_url",
+    )
+    """Base URL path for API requests, leave blank if not using a proxy or service 
+    emulator."""
+    openai_api_key: Optional[SecretStr] = Field(default=None)
+    """openai api key is not supported for naver. use `ncp_clovastudio_api_key` instead."""
+    openai_api_base: Optional[str] = Field(default=None)
+    """openai api base is not supported for naver. use `naver_api_base` instead."""
+    openai_organization: Optional[str] = Field(default=None)
+    """openai organization is not supported for naver."""
+    tiktoken_model_name: Optional[str] = None
+    """tiktoken is not supported for naver."""
 
     @model_validator(mode="after")
-    def validate_model_after(self) -> Self:
-        if not (self.model_name or self.task_id):
-            raise ValueError("either model_name or task_id must be assigned a value.")
+    def validate_environment(self) -> Self:
+        """Validate that api key and python package exists in environment."""
+        if self.n is not None and self.n < 1:
+            raise ValueError("n must be at least 1.")
+        if self.n is not None and self.n > 1 and self.streaming:
+            raise ValueError("n must be 1 when streaming.")
 
-        if not self.ncp_clovastudio_api_key:
-            self.ncp_clovastudio_api_key = convert_to_secret_str(
-                get_from_env("ncp_clovastudio_api_key", "NCP_CLOVASTUDIO_API_KEY")
-            )
+        client_params: dict = {
+            "api_key": (
+                self.ncp_clovastudio_api_key.get_secret_value()
+                if self.ncp_clovastudio_api_key
+                else None
+            ),
+            "base_url": self.naver_api_base,
+            "timeout": self.request_timeout,
+            "default_headers": self.default_headers,
+            "default_query": self.default_query,
+        }
+        if self.max_retries is not None:
+            client_params["max_retries"] = self.max_retries
 
-        if not self._is_new_api_key():
-            self._init_fields_on_old_api_key()
-
-        if not self.base_url:
-            self.base_url = get_from_env(
-                "base_url", "NCP_CLOVASTUDIO_API_BASE_URL", _DEFAULT_BASE_URL
-            )
-
-        if not self.client:
-            self.client = httpx.Client(
-                base_url=self.base_url,
-                headers=self.default_headers(),
-                timeout=self.timeout,
-            )
-
-        if not self.async_client:
-            self.async_client = httpx.AsyncClient(
-                base_url=self.base_url,
-                headers=self.default_headers(),
-                timeout=self.timeout,
-            )
-
+        if not (self.client or None):
+            sync_specific: dict = {"http_client": self.http_client}
+            self.client = openai.OpenAI(
+                **client_params, **sync_specific
+            ).chat.completions
+        if not (self.async_client or None):
+            async_specific: dict = {"http_client": self.http_async_client}
+            self.async_client = openai.AsyncOpenAI(
+                **client_params, **async_specific
+            ).chat.completions
         return self
 
-    def _is_new_api_key(self) -> bool:
-        if self.ncp_clovastudio_api_key:
-            return self.ncp_clovastudio_api_key.get_secret_value().startswith("nv-")
-        else:
-            return False
+    def get_token_ids(self, text: str) -> List[int]:
+        """Get the tokens present in the text."""
+        tokenizer = self._get_tokenizer()
+        encode = tokenizer.encode(text, add_special_tokens=False)
+        return encode.ids
 
-    def _init_fields_on_old_api_key(self) -> None:
-        if not self.ncp_apigw_api_key:
-            self.ncp_apigw_api_key = convert_to_secret_str(
-                get_from_env("ncp_apigw_api_key", "NCP_APIGW_API_KEY", "")
-            )
+    def get_num_tokens_from_messages(
+        self, messages: List[BaseMessage], tools: Sequence[Any] | None = None
+    ) -> int:
+        """Calculate num tokens for solar model."""
+        tokenizer = self._get_tokenizer()
+        tokens_per_message = 5  # <|im_start|>{role}\n{message}<|im_end|>
+        tokens_prefix = 1  # <|startoftext|>
+        tokens_suffix = 3  # <|im_start|>assistant\n
 
-    def default_headers(self) -> Dict[str, Any]:
-        headers = {
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-        }
+        num_tokens = 0
 
-        clovastudio_api_key = (
-            self.ncp_clovastudio_api_key.get_secret_value()
-            if self.ncp_clovastudio_api_key
-            else None
-        )
+        num_tokens += tokens_prefix
 
-        if self._is_new_api_key():
-            ### headers on new api key
-            headers["Authorization"] = f"Bearer {clovastudio_api_key}"
-        else:
-            ### headers on old api key
-            if clovastudio_api_key:
-                headers["X-NCP-CLOVASTUDIO-API-KEY"] = clovastudio_api_key
-
-            apigw_api_key = (
-                self.ncp_apigw_api_key.get_secret_value()
-                if self.ncp_apigw_api_key
-                else None
-            )
-            if apigw_api_key:
-                headers["X-NCP-APIGW-API-KEY"] = apigw_api_key
-
-        return headers
+        messages_dict = [_convert_message_to_dict(m) for m in messages]
+        for message in messages_dict:
+            num_tokens += tokens_per_message
+            for key, value in message.items():
+                # Cast str(value) in case the message value is not a string
+                # This occurs with function messages
+                num_tokens += len(
+                    tokenizer.encode(str(value), add_special_tokens=False)
+                )
+        # every reply is primed with <|im_start|>assistant
+        num_tokens += tokens_suffix
+        return num_tokens
 
     def _create_message_dicts(
         self, messages: List[BaseMessage], stop: Optional[List[str]]
-    ) -> Tuple[List[Dict], Dict[str, Any]]:
-        params = self._client_params
-        if stop is not None and "stopBefore" in params:
-            params["stopBefore"] = stop
-
-        message_dicts = [_convert_message_to_naver_chat_message(m) for m in messages]
+    ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+        params = self._default_params
+        if stop is not None:
+            params["stop"] = stop
+        message_dicts = [_convert_message_to_dict(m) for m in messages]
         return message_dicts, params
-
-    def _completion_with_retry(self, **kwargs: Any) -> Any:
-        from httpx_sse import (
-            ServerSentEvent,
-            connect_sse,
-        )
-
-        if "stream" not in kwargs:
-            kwargs["stream"] = False
-
-        stream = kwargs["stream"]
-        client = cast(httpx.Client, self.client)
-        if stream:
-
-            def iter_sse() -> Iterator[ServerSentEvent]:
-                with connect_sse(
-                    client, "POST", self._api_url, json=kwargs
-                ) as event_source:
-                    _raise_on_error(event_source.response)
-                    for sse in event_source.iter_sse():
-                        event_data = sse.json()
-                        if (
-                            sse.event == "signal"
-                            and event_data.get("data", {}) == "[DONE]"
-                        ):
-                            return
-                        if sse.event == "error":
-                            raise SSEError(message=sse.data)
-                        yield sse
-
-            return iter_sse()
-        else:
-            response = client.post(url=self._api_url, json=kwargs)
-            _raise_on_error(response)
-            return response.json()
-
-    async def _acompletion_with_retry(
-        self,
-        run_manager: Optional[AsyncCallbackManagerForLLMRun] = None,
-        **kwargs: Any,
-    ) -> Any:
-        from httpx_sse import aconnect_sse
-
-        """Use tenacity to retry the async completion call."""
-        retry_decorator = _create_retry_decorator(self, run_manager=run_manager)
-
-        @retry_decorator
-        async def _completion_with_retry(**kwargs: Any) -> Any:
-            if "stream" not in kwargs:
-                kwargs["stream"] = False
-            stream = kwargs["stream"]
-            async_client = cast(httpx.AsyncClient, self.async_client)
-            if stream:
-                event_source = aconnect_sse(
-                    async_client, "POST", self._api_url, json=kwargs
-                )
-                return _aiter_sse(event_source)
-            else:
-                response = await async_client.post(url=self._api_url, json=kwargs)
-                await _araise_on_error(response)
-                return response.json()
-
-        return await _completion_with_retry(**kwargs)
-
-    def _create_chat_result(self, response: Dict) -> ChatResult:
-        generations = []
-        result = response.get("result", {})
-        msg = result.get("message", {})
-        message = _convert_naver_chat_message_to_message(msg)
-
-        if isinstance(message, AIMessage):
-            message.usage_metadata = {
-                "input_tokens": result.get("inputLength"),
-                "output_tokens": result.get("outputLength"),
-                "total_tokens": result.get("inputLength") + result.get("outputLength"),
-            }
-
-        gen = ChatGeneration(
-            message=message,
-        )
-        generations.append(gen)
-
-        llm_output = {
-            "stop_reason": result.get("stopReason"),
-            "input_length": result.get("inputLength"),
-            "output_length": result.get("outputLength"),
-            "seed": result.get("seed"),
-            "ai_filter": result.get("aiFilter"),
-        }
-        return ChatResult(generations=generations, llm_output=llm_output)
 
     def _generate(
         self,
@@ -484,37 +203,14 @@ class ChatClovaX(BaseChatModel):
         run_manager: Optional[CallbackManagerForLLMRun] = None,
         **kwargs: Any,
     ) -> ChatResult:
-        message_dicts, params = self._create_message_dicts(messages, stop)
-        params = {**params, **kwargs}
-
-        response = self._completion_with_retry(messages=message_dicts, **params)
-
+        if self.streaming:
+            stream_iter = self._stream(
+                messages, stop=stop, run_manager=run_manager, **kwargs
+            )
+            return generate_from_stream(stream_iter)
+        payload = self._get_request_payload(messages, stop=stop, **kwargs)
+        response = self.client.create(**payload)
         return self._create_chat_result(response)
-
-    def _stream(
-        self,
-        messages: List[BaseMessage],
-        stop: Optional[List[str]] = None,
-        run_manager: Optional[CallbackManagerForLLMRun] = None,
-        **kwargs: Any,
-    ) -> Iterator[ChatGenerationChunk]:
-        message_dicts, params = self._create_message_dicts(messages, stop)
-        params = {**params, **kwargs, "stream": True}
-
-        default_chunk_class: Type[BaseMessageChunk] = AIMessageChunk
-        for sse in self._completion_with_retry(
-            messages=message_dicts, run_manager=run_manager, **params
-        ):
-            new_chunk = _convert_chunk_to_message_chunk(sse, default_chunk_class)
-            default_chunk_class = new_chunk.__class__
-            gen_chunk = ChatGenerationChunk(message=new_chunk)
-
-            if run_manager:
-                run_manager.on_llm_new_token(
-                    token=cast(str, new_chunk.content), chunk=gen_chunk
-                )
-
-            yield gen_chunk
 
     async def _agenerate(
         self,
@@ -523,50 +219,203 @@ class ChatClovaX(BaseChatModel):
         run_manager: Optional[AsyncCallbackManagerForLLMRun] = None,
         **kwargs: Any,
     ) -> ChatResult:
-        message_dicts, params = self._create_message_dicts(messages, stop)
-        params = {**params, **kwargs}
+        using_doc_parsing_model = self._using_doc_parsing_model(kwargs)
 
-        response = await self._acompletion_with_retry(
-            messages=message_dicts, run_manager=run_manager, **params
-        )
+        if using_doc_parsing_model:
+            document_contents = self._parse_documents(kwargs.pop("file_path"))
+            messages.append(HumanMessage(document_contents))
 
+        if self.streaming:
+            stream_iter = self._astream(
+                messages, stop=stop, run_manager=run_manager, **kwargs
+            )
+            return await agenerate_from_stream(stream_iter)
+
+        payload = self._get_request_payload(messages, stop=stop, **kwargs)
+        response = await self.async_client.create(**payload)
         return self._create_chat_result(response)
 
-    async def _astream(
+    def _get_request_payload(
         self,
-        messages: List[BaseMessage],
+        input_: LanguageModelInput,
+        *,
         stop: Optional[List[str]] = None,
-        run_manager: Optional[AsyncCallbackManagerForLLMRun] = None,
         **kwargs: Any,
-    ) -> AsyncIterator[ChatGenerationChunk]:
-        message_dicts, params = self._create_message_dicts(messages, stop)
-        params = {**params, **kwargs, "stream": True}
+    ) -> dict:
+        messages = self._convert_input(input_).to_messages()
+        if stop is not None:
+            kwargs["stop"] = stop
+        return {
+            "messages": [_convert_message_to_dict(m) for m in messages],
+            **self._default_params,
+            **kwargs,
+        }
 
-        default_chunk_class: Type[BaseMessageChunk] = AIMessageChunk
-        async for chunk in await self._acompletion_with_retry(
-            messages=message_dicts, run_manager=run_manager, **params
-        ):
-            new_chunk = _convert_chunk_to_message_chunk(chunk, default_chunk_class)
-            default_chunk_class = new_chunk.__class__
-            gen_chunk = ChatGenerationChunk(message=new_chunk)
+    # TODO: Fix typing.
+    @overload  # type: ignore[override]
+    def with_structured_output(
+        self,
+        schema: Optional[_DictOrPydanticClass] = None,
+        *,
+        include_raw: Literal[True] = True,
+        **kwargs: Any,
+    ) -> Runnable[LanguageModelInput, _AllReturnType]:
+        ...
 
-            if run_manager:
-                await run_manager.on_llm_new_token(
-                    token=cast(str, new_chunk.content), chunk=gen_chunk
+    @overload
+    def with_structured_output(
+        self,
+        schema: Optional[_DictOrPydanticClass] = None,
+        *,
+        include_raw: Literal[False] = False,
+        **kwargs: Any,
+    ) -> Runnable[LanguageModelInput, _DictOrPydantic]:
+        ...
+
+    def with_structured_output(
+        self,
+        schema: Optional[_DictOrPydanticClass] = None,
+        *,
+        include_raw: bool = False,
+        **kwargs: Any,
+    ) -> Runnable[LanguageModelInput, _DictOrPydantic]:
+        """Model wrapper that returns outputs formatted to match the given schema.
+
+        Args:
+            schema: The output schema as a dict or a Pydantic class. If a Pydantic class
+                then the model output will be an object of that class. If a dict then
+                the model output will be a dict. With a Pydantic class the returned
+                attributes will be validated, whereas with a dict they will not be. If
+                `method` is "function_calling" and `schema` is a dict, then the dict
+                must match the OpenAI function-calling spec or be a valid JSON schema
+                with top level 'title' and 'description' keys specified.
+            include_raw: If False then only the parsed structured output is returned. If
+                an error occurs during model output parsing it will be raised. If True
+                then both the raw model response (a BaseMessage) and the parsed model
+                response will be returned. If an error occurs during output parsing it
+                will be caught and returned as well. The final output is always a dict
+                with keys "raw", "parsed", and "parsing_error".
+
+        Returns:
+            A Runnable that takes any ChatModel input and returns as output:
+
+                If include_raw is True then a dict with keys:
+                    raw: BaseMessage
+                    parsed: Optional[_DictOrPydantic]
+                    parsing_error: Optional[BaseException]
+
+                If include_raw is False then just _DictOrPydantic is returned,
+                where _DictOrPydantic depends on the schema:
+
+                If schema is a Pydantic class then _DictOrPydantic is the Pydantic
+                    class.
+
+                If schema is a dict then _DictOrPydantic is a dict.
+
+        Example: Function-calling, Pydantic schema (method="function_calling", include_raw=False):
+            .. code-block:: python
+
+                from langchain_naver import ChatClovaX
+                from pydantic import BaseModel
+
+
+                class AnswerWithJustification(BaseModel):
+                    '''An answer to the user question along with justification for the answer.'''
+
+                    answer: str
+                    justification: str
+
+
+                llm = ChatClovaX(model="HCX-003", temperature=0)
+                structured_llm = llm.with_structured_output(AnswerWithJustification)
+
+                structured_llm.invoke(
+                    "What weighs more a pound of bricks or a pound of feathers"
                 )
 
-            yield gen_chunk
+                # -> AnswerWithJustification(
+                #     answer='They weigh the same',
+                #     justification='Both a pound of bricks and a pound of feathers weigh one pound. The weight is the same, but the volume or density of the objects may differ.'
+                # )
+
+        Example: Function-calling, Pydantic schema (method="function_calling", include_raw=True):
+            .. code-block:: python
+
+                from langchain_naver import ChatClovaX
+                from pydantic import BaseModel
 
 
-def _create_retry_decorator(
-    llm: ChatClovaX,
-    run_manager: Optional[
-        Union[AsyncCallbackManagerForLLMRun, CallbackManagerForLLMRun]
-    ] = None,
-) -> Callable[[Any], Any]:
-    """Returns a tenacity retry decorator, preconfigured to handle exceptions"""
+                class AnswerWithJustification(BaseModel):
+                    '''An answer to the user question along with justification for the answer.'''
 
-    errors = [httpx.RequestError, httpx.StreamError]
-    return create_base_retry_decorator(
-        error_types=errors, max_retries=llm.max_retries, run_manager=run_manager
-    )
+                    answer: str
+                    justification: str
+
+
+                llm = ChatClovaX(model="HCX-003", temperature=0)
+                structured_llm = llm.with_structured_output(
+                    AnswerWithJustification, include_raw=True
+                )
+
+                structured_llm.invoke(
+                    "What weighs more a pound of bricks or a pound of feathers"
+                )
+                # -> {
+                #     'raw': AIMessage(content='', additional_kwargs={'tool_calls': [{'id': 'call_Ao02pnFYXD6GN1yzc0uXPsvF', 'function': {'arguments': '{"answer":"They weigh the same.","justification":"Both a pound of bricks and a pound of feathers weigh one pound. The weight is the same, but the volume or density of the objects may differ."}', 'name': 'AnswerWithJustification'}, 'type': 'function'}]}),
+                #     'parsed': AnswerWithJustification(answer='They weigh the same.', justification='Both a pound of bricks and a pound of feathers weigh one pound. The weight is the same, but the volume or density of the objects may differ.'),
+                #     'parsing_error': None
+                # }
+
+        Example: Function-calling, dict schema (method="function_calling", include_raw=False):
+            .. code-block:: python
+
+                from langchain_naver import ChatClovaX
+                from langchain_core.utils.function_calling import convert_to_openai_tool
+                from pydantic import BaseModel
+
+
+                class AnswerWithJustification(BaseModel):
+                    '''An answer to the user question along with justification for the answer.'''
+
+                    answer: str
+                    justification: str
+
+
+                dict_schema = convert_to_openai_tool(AnswerWithJustification)
+                llm = ChatClovaX(model="HCX-003", temperature=0)
+                structured_llm = llm.with_structured_output(dict_schema)
+
+                structured_llm.invoke(
+                    "What weighs more a pound of bricks or a pound of feathers"
+                )
+                # -> {
+                #     'answer': 'They weigh the same',
+                #     'justification': 'Both a pound of bricks and a pound of feathers weigh one pound. The weight is the same, but the volume and density of the two substances differ.'
+                # }
+        """  # noqa: E501
+        if kwargs:
+            raise ValueError(f"Received unsupported arguments {kwargs}")
+        is_pydantic_schema = _is_pydantic_class(schema)
+        if schema is None:
+            raise ValueError("schema must be specified. Received None.")
+        tool_name = convert_to_openai_tool(schema)["function"]["name"]
+        llm = self.bind_tools([schema], tool_choice=tool_name)
+        if is_pydantic_schema:
+            output_parser: OutputParserLike = PydanticToolsParser(
+                tools=[cast(type, schema)], first_tool_only=True
+            )
+        else:
+            output_parser = JsonOutputKeyToolsParser(
+                key_name=tool_name, first_tool_only=True
+            )
+        if include_raw:
+            parser_assign = RunnablePassthrough.assign(
+                parsed=itemgetter("raw") | output_parser, parsing_error=lambda _: None
+            )
+            parser_none = RunnablePassthrough.assign(parsed=lambda _: None)
+            parser_with_fallback = parser_assign.with_fallbacks(
+                [parser_none], exception_key="parsing_error"
+            )
+            return RunnableMap(raw=llm) | parser_with_fallback
+        else:
+            return llm | output_parser
