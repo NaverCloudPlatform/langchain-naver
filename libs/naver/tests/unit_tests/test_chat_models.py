@@ -1,197 +1,213 @@
-"""Test chat model integration."""
-
 import json
 import os
-from typing import Any, AsyncGenerator, Generator, cast
-from unittest.mock import patch
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.messages import (
     AIMessage,
+    FunctionMessage,
     HumanMessage,
     SystemMessage,
+    ToolMessage,
 )
-from pydantic import SecretStr
+from langchain_openai.chat_models.base import (
+    _convert_dict_to_message,
+    _convert_message_to_dict,
+)
 
-from langchain_naver.chat_models import (
-    ChatClovaX,
-    _convert_message_to_naver_chat_message,
-    _convert_naver_chat_message_to_message,
-)
+from langchain_naver import ChatClovaX
 
 os.environ["NCP_CLOVASTUDIO_API_KEY"] = "test_api_key"
-os.environ["NCP_APIGW_API_KEY"] = "test_gw_key"
 
 
-def test_initialization_api_key() -> None:
+def test_initialization() -> None:
     """Test chat model initialization."""
-    chat_model = ChatClovaX(api_key="foo", apigw_api_key="bar")  # type: ignore[arg-type]
-    assert (
-        cast(SecretStr, chat_model.ncp_clovastudio_api_key).get_secret_value() == "foo"
+    ChatClovaX()
+
+
+def test_naver_model_param() -> None:
+    llm = ChatClovaX(model="foo")
+    assert llm.model_name == "foo"
+    llm = ChatClovaX(model_name="foo")  # type: ignore
+    assert llm.model_name == "foo"
+    ls_params = llm._get_ls_params()
+    assert ls_params["ls_provider"] == "naver"
+
+
+def test_function_dict_to_message_function_message() -> None:
+    content = json.dumps({"result": "Example #1"})
+    name = "test_function"
+    result = _convert_dict_to_message(
+        {
+            "role": "function",
+            "name": name,
+            "content": content,
+        }
     )
-    assert cast(SecretStr, chat_model.ncp_apigw_api_key).get_secret_value() == "bar"
-
-
-def test_initialization_model_name() -> None:
-    llm = ChatClovaX(model="HCX-DASH-001")  # type: ignore[call-arg]
-    assert llm.model_name == "HCX-DASH-001"
-    llm = ChatClovaX(model_name="HCX-DASH-001")
-    assert llm.model_name == "HCX-DASH-001"
+    assert isinstance(result, FunctionMessage)
+    assert result.name == name
+    assert result.content == content
 
 
 def test_convert_dict_to_message_human() -> None:
     message = {"role": "user", "content": "foo"}
-    result = _convert_naver_chat_message_to_message(message)
+    result = _convert_dict_to_message(message)
     expected_output = HumanMessage(content="foo")
     assert result == expected_output
-    assert _convert_message_to_naver_chat_message(expected_output) == message
+    assert _convert_message_to_dict(expected_output) == message
+
+
+def test__convert_dict_to_message_human_with_name() -> None:
+    message = {"role": "user", "content": "foo", "name": "test"}
+    result = _convert_dict_to_message(message)
+    expected_output = HumanMessage(content="foo", name="test")
+    assert result == expected_output
+    assert _convert_message_to_dict(expected_output) == message
 
 
 def test_convert_dict_to_message_ai() -> None:
     message = {"role": "assistant", "content": "foo"}
-    result = _convert_naver_chat_message_to_message(message)
+    result = _convert_dict_to_message(message)
     expected_output = AIMessage(content="foo")
     assert result == expected_output
-    assert _convert_message_to_naver_chat_message(expected_output) == message
+    assert _convert_message_to_dict(expected_output) == message
+
+
+def test_convert_dict_to_message_ai_with_name() -> None:
+    message = {"role": "assistant", "content": "foo", "name": "test"}
+    result = _convert_dict_to_message(message)
+    expected_output = AIMessage(content="foo", name="test")
+    assert result == expected_output
+    assert _convert_message_to_dict(expected_output) == message
 
 
 def test_convert_dict_to_message_system() -> None:
     message = {"role": "system", "content": "foo"}
-    result = _convert_naver_chat_message_to_message(message)
+    result = _convert_dict_to_message(message)
     expected_output = SystemMessage(content="foo")
     assert result == expected_output
-    assert _convert_message_to_naver_chat_message(expected_output) == message
+    assert _convert_message_to_dict(expected_output) == message
+
+
+def test_convert_dict_to_message_system_with_name() -> None:
+    message = {"role": "system", "content": "foo", "name": "test"}
+    result = _convert_dict_to_message(message)
+    expected_output = SystemMessage(content="foo", name="test")
+    assert result == expected_output
+    assert _convert_message_to_dict(expected_output) == message
+
+
+def test_convert_dict_to_message_tool() -> None:
+    message = {"role": "tool", "content": "foo", "tool_call_id": "bar"}
+    result = _convert_dict_to_message(message)
+    expected_output = ToolMessage(content="foo", tool_call_id="bar")
+    assert result == expected_output
+    assert _convert_message_to_dict(expected_output) == message
 
 
 @pytest.fixture
-def mock_chat_completion_response() -> dict:
+def mock_completion() -> dict:
     return {
-        "status": {"code": "20000", "message": "OK"},
-        "result": {
-            "message": {
-                "role": "assistant",
-                "content": "Phrases: Record what happened today and prepare "
-                "for tomorrow. "
-                "The diary will make your life richer.",
-            },
-            "stopReason": "LENGTH",
-            "inputLength": 100,
-            "outputLength": 10,
-            "aiFilter": [
-                {"groupName": "curse", "name": "insult", "score": "1"},
-                {"groupName": "curse", "name": "discrimination", "score": "0"},
-                {
-                    "groupName": "unsafeContents",
-                    "name": "sexualHarassment",
-                    "score": "2",
+        "id": "chatcmpl-7fcZavknQda3SQ",
+        "object": "chat.completion",
+        "created": 1689989000,
+        "model": "solar-mini",
+        "choices": [
+            {
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": "Bab",
+                    "name": "KimSolar",
                 },
-            ],
-        },
+                "finish_reason": "stop",
+            }
+        ],
     }
 
 
-def test_naver_invoke(mock_chat_completion_response: dict) -> None:
+def test_naver_invoke(mock_completion: dict) -> None:
     llm = ChatClovaX()
+    mock_client = MagicMock()
     completed = False
 
-    def mock_completion_with_retry(*args: Any, **kwargs: Any) -> Any:
+    def mock_create(*args: Any, **kwargs: Any) -> Any:
         nonlocal completed
         completed = True
-        return mock_chat_completion_response
+        return mock_completion
 
-    with patch.object(ChatClovaX, "_completion_with_retry", mock_completion_with_retry):
-        res = llm.invoke("Let's test it.")
-        assert (
-            res.content
-            == "Phrases: Record what happened today and prepare for tomorrow. "
-            "The diary will make your life richer."
-        )
+    mock_client.create = mock_create
+    with patch.object(
+        llm,
+        "client",
+        mock_client,
+    ):
+        res = llm.invoke("bab")
+        assert res.content == "Bab"
     assert completed
 
 
-async def test_naver_ainvoke(mock_chat_completion_response: dict) -> None:
+async def test_naver_ainvoke(mock_completion: dict) -> None:
     llm = ChatClovaX()
+    mock_client = AsyncMock()
     completed = False
 
-    async def mock_acompletion_with_retry(*args: Any, **kwargs: Any) -> Any:
+    async def mock_create(*args: Any, **kwargs: Any) -> Any:
         nonlocal completed
         completed = True
-        return mock_chat_completion_response
+        return mock_completion
+
+    mock_client.create = mock_create
+    with patch.object(
+        llm,
+        "async_client",
+        mock_client,
+    ):
+        res = await llm.ainvoke("bab")
+        assert res.content == "Bab"
+    assert completed
+
+
+def test_naver_invoke_name(mock_completion: dict) -> None:
+    llm = ChatClovaX()
+
+    mock_client = MagicMock()
+    mock_client.create.return_value = mock_completion
 
     with patch.object(
-        ChatClovaX, "_acompletion_with_retry", mock_acompletion_with_retry
+        llm,
+        "client",
+        mock_client,
     ):
-        res = await llm.ainvoke("Let's test it.")
-        assert (
-            res.content
-            == "Phrases: Record what happened today and prepare for tomorrow. "
-            "The diary will make your life richer."
-        )
-    assert completed
+        messages = [
+            HumanMessage(content="Foo", name="Zorba"),
+        ]
+        res = llm.invoke(messages)
+        call_args, call_kwargs = mock_client.create.call_args
+        assert len(call_args) == 0  # no positional args
+        call_messages = call_kwargs["messages"]
+        assert len(call_messages) == 1
+        assert call_messages[0]["role"] == "user"
+        assert call_messages[0]["content"] == "Foo"
+        assert call_messages[0]["name"] == "Zorba"
+
+        # check return type has name
+        assert res.content == "Bab"
+        assert res.name == "KimSolar"
 
 
-def _make_completion_response_from_token(token: str):  # type: ignore[no-untyped-def]
-    from httpx_sse import ServerSentEvent
+def test_chat_naver_extra_kwargs() -> None:
+    """Test extra kwargs to chat upstage."""
+    # Check that foo is saved in extra_kwargs.
+    llm = ChatClovaX(foo=3, max_tokens=10)  # type: ignore
+    assert llm.max_tokens == 10
+    assert llm.model_kwargs == {"foo": 3}
 
-    return ServerSentEvent(
-        event="token",
-        data=json.dumps(
-            dict(
-                index=0,
-                inputLength=89,
-                outputLength=1,
-                message=dict(
-                    content=token,
-                    role="assistant",
-                ),
-            )
-        ),
-    )
+    # Test that if extra_kwargs are provided, they are added to it.
+    llm = ChatClovaX(foo=3, model_kwargs={"bar": 2})  # type: ignore
+    assert llm.model_kwargs == {"foo": 3, "bar": 2}
 
-
-def mock_chat_stream(*args: Any, **kwargs: Any) -> Generator:
-    def it() -> Generator:
-        for token in ["Hello", " how", " can", " I", " help", "?"]:
-            yield _make_completion_response_from_token(token)
-
-    return it()
-
-
-async def mock_chat_astream(*args: Any, **kwargs: Any) -> AsyncGenerator:
-    async def it() -> AsyncGenerator:
-        for token in ["Hello", " how", " can", " I", " help", "?"]:
-            yield _make_completion_response_from_token(token)
-
-    return it()
-
-
-class MyCustomHandler(BaseCallbackHandler):
-    last_token: str = ""
-
-    def on_llm_new_token(self, token: str, **kwargs: Any) -> None:
-        self.last_token = token
-
-
-@patch(
-    "langchain_naver.ChatClovaX._completion_with_retry",
-    new=mock_chat_stream,
-)
-@pytest.mark.requires("httpx_sse")
-def test_stream_with_callback() -> None:
-    callback = MyCustomHandler()
-    chat = ChatClovaX(callbacks=[callback])
-    for token in chat.stream("Hello"):
-        assert callback.last_token == token.content
-
-
-@patch(
-    "langchain_naver.ChatClovaX._acompletion_with_retry",
-    new=mock_chat_astream,
-)
-@pytest.mark.requires("httpx_sse")
-async def test_astream_with_callback() -> None:
-    callback = MyCustomHandler()
-    chat = ChatClovaX(callbacks=[callback])
-    async for token in chat.astream("Hello"):
-        assert callback.last_token == token.content
+    # Test that if provided twice it errors
+    with pytest.raises(ValueError):
+        ChatClovaX(foo=3, model_kwargs={"foo": 2})  # type: ignore
