@@ -72,7 +72,8 @@ class ClovaXEmbeddings(BaseModel, Embeddings):
     """Automatically inferred from env are `NCP_CLOVASTUDIO_API_KEY` if not provided."""
     naver_api_base: Optional[str] = Field(
         default_factory=from_env(
-            "NCP_CLOVASTUDIO_API_BASE_URL", default="https://clovastudio.stream.ntruss.com/v1/openai"
+            "NCP_CLOVASTUDIO_API_BASE_URL",
+            default="https://clovastudio.stream.ntruss.com/v1/openai",
         ),
         alias="base_url",
     )
