@@ -18,7 +18,7 @@ from langchain_openai.chat_models.base import (
 
 from langchain_naver import ChatClovaX
 
-os.environ["NCP_CLOVASTUDIO_API_KEY"] = "test_api_key"
+os.environ["CLOVASTUDIO_API_KEY"] = "test_api_key"
 
 
 def test_initialization() -> None:

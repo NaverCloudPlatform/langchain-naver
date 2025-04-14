@@ -6,7 +6,7 @@ import pytest
 
 from langchain_naver import ClovaXEmbeddings
 
-os.environ["NCP_CLOVASTUDIO_API_KEY"] = "foo"
+os.environ["CLOVASTUDIO_API_KEY"] = "foo"
 
 
 def test_initialization() -> None:

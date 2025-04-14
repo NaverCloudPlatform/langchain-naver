@@ -36,7 +36,7 @@ MAX_EMBED_BATCH_SIZE = 100
 class ClovaXEmbeddings(BaseModel, Embeddings):
     """ClovaXEmbeddings embedding model.
 
-    To use, set the environment variable `NCP_CLOVASTUDIO_API_KEY` with your API key or
+    To use, set the environment variable `CLOVASTUDIO_API_KEY` with your API key or
     pass it as a named parameter to the constructor.
 
     Example:
@@ -49,7 +49,7 @@ class ClovaXEmbeddings(BaseModel, Embeddings):
 
     client: Any = Field(default=None, exclude=True)  #: :meta private:
     async_client: Any = Field(default=None, exclude=True)  #: :meta private:
-    model: str = Field(...)
+    model: str = Field(default="clir-emb-dolphin")
     """Embeddings model name to use. Do not add suffixes like `-query` and `-passage`.
     Instead, use 'clir-emb-dolphin' for example.
     """
@@ -58,21 +58,20 @@ class ClovaXEmbeddings(BaseModel, Embeddings):
     
     Not yet supported. 
     """
-    ncp_clovastudio_api_key: SecretStr = Field(
+    api_key: SecretStr = Field(
         default_factory=secret_from_env(
-            "NCP_CLOVASTUDIO_API_KEY",
+            "CLOVASTUDIO_API_KEY",
             error_message=(
                 "You must specify an api key. "
                 "You can pass it an argument as `api_key=...` or "
-                "set the environment variable `NCP_CLOVASTUDIO_API_KEY`."
+                "set the environment variable `CLOVASTUDIO_API_KEY`."
             ),
         ),
-        alias="api_key",
     )
-    """Automatically inferred from env are `NCP_CLOVASTUDIO_API_KEY` if not provided."""
+    """Automatically inferred from env are `CLOVASTUDIO_API_KEY` if not provided."""
     naver_api_base: Optional[str] = Field(
         default_factory=from_env(
-            "NCP_CLOVASTUDIO_API_BASE_URL",
+            "CLOVASTUDIO_API_BASE_URL",
             default="https://clovastudio.stream.ntruss.com/v1/openai",
         ),
         alias="base_url",
@@ -163,8 +162,8 @@ class ClovaXEmbeddings(BaseModel, Embeddings):
 
         client_params: dict = {
             "api_key": (
-                self.ncp_clovastudio_api_key.get_secret_value()
-                if self.ncp_clovastudio_api_key
+                self.api_key.get_secret_value()
+                if self.api_key
                 else None
             ),
             "base_url": self.naver_api_base,
