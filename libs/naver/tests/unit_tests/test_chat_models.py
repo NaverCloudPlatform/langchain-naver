@@ -26,7 +26,7 @@ def test_initialization() -> None:
     ChatClovaX()
 
 
-def test_naver_model_param() -> None:
+def test_chat_model_param() -> None:
     llm = ChatClovaX(model="foo")
     assert llm.model_name == "foo"
     llm = ChatClovaX(model_name="foo")  # type: ignore
@@ -111,8 +111,8 @@ def mock_completion() -> dict:
     return {
         "id": "chatcmpl-7fcZavknQda3SQ",
         "object": "chat.completion",
-        "created": 1689989000,
-        "model": "solar-mini",
+        "created": 2189929000,
+        "model": "HCX-003",
         "choices": [
             {
                 "index": 0,
@@ -127,7 +127,7 @@ def mock_completion() -> dict:
     }
 
 
-def test_naver_invoke(mock_completion: dict) -> None:
+def test_chat_model_invoke(mock_completion: dict) -> None:
     llm = ChatClovaX()
     mock_client = MagicMock()
     completed = False
@@ -148,7 +148,7 @@ def test_naver_invoke(mock_completion: dict) -> None:
     assert completed
 
 
-async def test_naver_ainvoke(mock_completion: dict) -> None:
+async def test_chat_model_ainvoke(mock_completion: dict) -> None:
     llm = ChatClovaX()
     mock_client = AsyncMock()
     completed = False
@@ -169,7 +169,7 @@ async def test_naver_ainvoke(mock_completion: dict) -> None:
     assert completed
 
 
-def test_naver_invoke_name(mock_completion: dict) -> None:
+def test_chat_model_invoke_name(mock_completion: dict) -> None:
     llm = ChatClovaX()
 
     mock_client = MagicMock()
@@ -197,7 +197,7 @@ def test_naver_invoke_name(mock_completion: dict) -> None:
         assert res.name == "KimSolar"
 
 
-def test_chat_naver_extra_kwargs() -> None:
+def test_chat_model_extra_kwargs() -> None:
     """Test extra kwargs to chat upstage."""
     # Check that foo is saved in extra_kwargs.
     llm = ChatClovaX(foo=3, max_tokens=10)  # type: ignore
