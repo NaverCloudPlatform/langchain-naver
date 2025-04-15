@@ -50,14 +50,14 @@ class ClovaXEmbeddings(BaseModel, Embeddings):
     client: Any = Field(default=None, exclude=True)  #: :meta private:
     async_client: Any = Field(default=None, exclude=True)  #: :meta private:
     model: str = Field(default="clir-emb-dolphin")
-    """Embeddings model name to use. Do not add suffixes like `-query` and `-passage`.
-    Instead, use 'clir-emb-dolphin' for example.
-    """
+    """NCP ClovaStudio embedding model name"""
     dimensions: Optional[int] = None
     """The number of dimensions the resulting output embeddings should have.
     
     Not yet supported. 
     """
+    encoding_format: Literal["float", "base64"] = "float"
+    """Not yet supported. """
     api_key: SecretStr = Field(
         default_factory=secret_from_env(
             "CLOVASTUDIO_API_KEY",
@@ -180,11 +180,11 @@ class ClovaXEmbeddings(BaseModel, Embeddings):
 
     @property
     def _invocation_params(self) -> Dict[str, Any]:
-        self.model = self.model.replace("-query", "").replace("-passage", "")
-
         params: Dict = {"model": self.model, **self.model_kwargs}
         if self.dimensions is not None:
             params["dimensions"] = self.dimensions
+        if self.encoding_format is not None:
+            params["encoding_format"] = self.encoding_format
         return params
 
     def embed_documents(self, texts: List[str]) -> List[List[float]]:
@@ -196,21 +196,9 @@ class ClovaXEmbeddings(BaseModel, Embeddings):
         Returns:
             List of embeddings, one for each text.
         """
-        assert (
-            self.embed_batch_size <= MAX_EMBED_BATCH_SIZE
-        ), f"The embed_batch_size should not be larger than {MAX_EMBED_BATCH_SIZE}."
-        if not texts:
-            return []
-        params = self._invocation_params
-        params["model"] = params["model"] + "-passage"
         embeddings = []
-
-        batch_size = min(self.embed_batch_size, len(texts))
-        for i in range(0, len(texts), batch_size):
-            batch = texts[i : i + batch_size]
-            data = self.client.create(input=batch, **params).data
-            embeddings.extend([r.embedding for r in data])
-
+        for text in texts:
+            embeddings.append(self.embed_query(text))
         return embeddings
 
     def embed_query(self, text: str) -> List[float]:
@@ -222,10 +210,7 @@ class ClovaXEmbeddings(BaseModel, Embeddings):
         Returns:
             Embedding for the text.
         """
-        params = self._invocation_params
-        params["model"] = params["model"] + "-query"
-
-        response = self.client.create(input=text, **params)
+        response = self.client.create(input=text, **self._invocation_params)
 
         if not isinstance(response, dict):
             response = response.model_dump()
@@ -240,20 +225,10 @@ class ClovaXEmbeddings(BaseModel, Embeddings):
         Returns:
             List of embeddings, one for each text.
         """
-        assert (
-            self.embed_batch_size <= MAX_EMBED_BATCH_SIZE
-        ), f"The embed_batch_size should not be larger than {MAX_EMBED_BATCH_SIZE}."
-        if not texts:
-            return []
-        params = self._invocation_params
-        params["model"] = params["model"] + "-passage"
         embeddings = []
-
-        batch_size = min(self.embed_batch_size, len(texts))
-        for i in range(0, len(texts), batch_size):
-            batch = texts[i : i + batch_size]
-            response = await self.async_client.create(input=batch, **params)
-            embeddings.extend([r.embedding for r in response.data])
+        for text in texts:
+            embedding = await self.aembed_query(text)
+            embeddings.append(embedding)
         return embeddings
 
     async def aembed_query(self, text: str) -> List[float]:
@@ -265,10 +240,7 @@ class ClovaXEmbeddings(BaseModel, Embeddings):
         Returns:
             Embedding for the text.
         """
-        params = self._invocation_params
-        params["model"] = params["model"] + "-query"
-
-        response = await self.async_client.create(input=text, **params)
+        response = await self.async_client.create(input=text, **self._invocation_params)
 
         if not isinstance(response, dict):
             response = response.model_dump()
