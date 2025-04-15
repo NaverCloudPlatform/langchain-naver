@@ -17,8 +17,8 @@ def test_stream() -> None:
         assert isinstance(token, AIMessageChunk)
         assert isinstance(token.content, str)
         if token.response_metadata:
-            assert token.response_metadata['model_name']
-            assert token.response_metadata['finish_reason']
+            assert token.response_metadata["model_name"]
+            assert token.response_metadata["finish_reason"]
 
 
 async def test_astream() -> None:
@@ -29,8 +29,8 @@ async def test_astream() -> None:
         assert isinstance(token, AIMessageChunk)
         assert isinstance(token.content, str)
         if token.response_metadata:
-            assert token.response_metadata['model_name']
-            assert token.response_metadata['finish_reason']
+            assert token.response_metadata["model_name"]
+            assert token.response_metadata["finish_reason"]
 
 
 async def test_abatch() -> None:
@@ -42,8 +42,8 @@ async def test_abatch() -> None:
         assert isinstance(token, AIMessage)
         assert isinstance(token.content, str)
         if token.response_metadata:
-            assert token.response_metadata['model_name']
-            assert token.response_metadata['finish_reason']
+            assert token.response_metadata["model_name"]
+            assert token.response_metadata["finish_reason"]
 
 
 async def test_abatch_tags() -> None:
@@ -55,8 +55,8 @@ async def test_abatch_tags() -> None:
         assert isinstance(token, AIMessage)
         assert isinstance(token.content, str)
         if token.response_metadata:
-            assert token.response_metadata['model_name']
-            assert token.response_metadata['finish_reason']
+            assert token.response_metadata["model_name"]
+            assert token.response_metadata["finish_reason"]
 
 
 def test_batch() -> None:
@@ -68,8 +68,8 @@ def test_batch() -> None:
         assert isinstance(token, AIMessage)
         assert isinstance(token.content, str)
         if token.response_metadata:
-            assert token.response_metadata['model_name']
-            assert token.response_metadata['finish_reason']
+            assert token.response_metadata["model_name"]
+            assert token.response_metadata["finish_reason"]
 
 
 async def test_ainvoke() -> None:
@@ -80,8 +80,8 @@ async def test_ainvoke() -> None:
     assert isinstance(result, AIMessage)
     assert isinstance(result.content, str)
     if result.response_metadata:
-        assert result.response_metadata['model_name']
-        assert result.response_metadata['finish_reason']
+        assert result.response_metadata["model_name"]
+        assert result.response_metadata["finish_reason"]
 
 
 def test_invoke() -> None:
@@ -92,8 +92,8 @@ def test_invoke() -> None:
     assert isinstance(result, AIMessage)
     assert isinstance(result.content, str)
     if result.response_metadata:
-        assert result.response_metadata['model_name']
-        assert result.response_metadata['finish_reason']
+        assert result.response_metadata["model_name"]
+        assert result.response_metadata["finish_reason"]
 
 
 def test_stream_error_event() -> None:
