@@ -96,11 +96,7 @@ def mock_completion() -> dict:
         "id": "65caeb6999d34615ae7c217583eb366b",
         "created": 1744703673905,
         "model": "HCX-003",
-        "usage": {
-            "completion_tokens": 85,
-            "prompt_tokens": 161,
-            "total_tokens": 246
-        },
+        "usage": {"completion_tokens": 85, "prompt_tokens": 161, "total_tokens": 246},
         "seed": 1,
         "choices": [
             {
@@ -111,7 +107,7 @@ def mock_completion() -> dict:
                 },
                 "finish_reason": "stop",
             }
-        ]
+        ],
     }
 
 
