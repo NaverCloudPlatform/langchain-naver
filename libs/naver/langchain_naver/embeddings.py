@@ -161,11 +161,7 @@ class ClovaXEmbeddings(BaseModel, Embeddings):
         """Validate that api key and python package exists in environment."""
 
         client_params: dict = {
-            "api_key": (
-                self.api_key.get_secret_value()
-                if self.api_key
-                else None
-            ),
+            "api_key": (self.api_key.get_secret_value() if self.api_key else None),
             "base_url": self.naver_api_base,
             "timeout": self.request_timeout,
             "max_retries": self.max_retries,

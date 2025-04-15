@@ -115,11 +115,7 @@ class ChatClovaX(BaseChatOpenAI):
             raise ValueError("n must be 1 when streaming.")
 
         client_params: dict = {
-            "api_key": (
-                self.api_key.get_secret_value()
-                if self.api_key
-                else None
-            ),
+            "api_key": (self.api_key.get_secret_value() if self.api_key else None),
             "base_url": self.naver_api_base,
             "timeout": self.request_timeout,
             "default_headers": self.default_headers,
