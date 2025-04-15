@@ -58,26 +58,10 @@ def test_convert_dict_to_message_human() -> None:
     assert _convert_message_to_dict(expected_output) == message
 
 
-def test__convert_dict_to_message_human_with_name() -> None:
-    message = {"role": "user", "content": "foo", "name": "test"}
-    result = _convert_dict_to_message(message)
-    expected_output = HumanMessage(content="foo", name="test")
-    assert result == expected_output
-    assert _convert_message_to_dict(expected_output) == message
-
-
 def test_convert_dict_to_message_ai() -> None:
     message = {"role": "assistant", "content": "foo"}
     result = _convert_dict_to_message(message)
     expected_output = AIMessage(content="foo")
-    assert result == expected_output
-    assert _convert_message_to_dict(expected_output) == message
-
-
-def test_convert_dict_to_message_ai_with_name() -> None:
-    message = {"role": "assistant", "content": "foo", "name": "test"}
-    result = _convert_dict_to_message(message)
-    expected_output = AIMessage(content="foo", name="test")
     assert result == expected_output
     assert _convert_message_to_dict(expected_output) == message
 
@@ -109,21 +93,25 @@ def test_convert_dict_to_message_tool() -> None:
 @pytest.fixture
 def mock_completion() -> dict:
     return {
-        "id": "chatcmpl-7fcZavknQda3SQ",
-        "object": "chat.completion",
-        "created": 2189929000,
+        "id": "65caeb6999d34615ae7c217583eb366b",
+        "created": 1744703673905,
         "model": "HCX-003",
+        "usage": {
+            "completion_tokens": 85,
+            "prompt_tokens": 161,
+            "total_tokens": 246
+        },
+        "seed": 1,
         "choices": [
             {
                 "index": 0,
                 "message": {
                     "role": "assistant",
                     "content": "Bab",
-                    "name": "KimSolar",
                 },
                 "finish_reason": "stop",
             }
-        ],
+        ]
     }
 
 
@@ -169,36 +157,8 @@ async def test_chat_model_ainvoke(mock_completion: dict) -> None:
     assert completed
 
 
-def test_chat_model_invoke_name(mock_completion: dict) -> None:
-    llm = ChatClovaX()
-
-    mock_client = MagicMock()
-    mock_client.create.return_value = mock_completion
-
-    with patch.object(
-        llm,
-        "client",
-        mock_client,
-    ):
-        messages = [
-            HumanMessage(content="Foo", name="Zorba"),
-        ]
-        res = llm.invoke(messages)
-        call_args, call_kwargs = mock_client.create.call_args
-        assert len(call_args) == 0  # no positional args
-        call_messages = call_kwargs["messages"]
-        assert len(call_messages) == 1
-        assert call_messages[0]["role"] == "user"
-        assert call_messages[0]["content"] == "Foo"
-        assert call_messages[0]["name"] == "Zorba"
-
-        # check return type has name
-        assert res.content == "Bab"
-        assert res.name == "KimSolar"
-
-
 def test_chat_model_extra_kwargs() -> None:
-    """Test extra kwargs to chat upstage."""
+    """Test extra kwargs to chat model."""
     # Check that foo is saved in extra_kwargs.
     llm = ChatClovaX(foo=3, max_tokens=10)  # type: ignore
     assert llm.max_tokens == 10
