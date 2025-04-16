@@ -51,9 +51,8 @@ class ClovaXEmbeddings(BaseModel, Embeddings):
     async_client: Any = Field(default=None, exclude=True)  #: :meta private:
     model: str = Field(default="clir-emb-dolphin")
     """NCP ClovaStudio embedding model name"""
-    dimensions: Optional[int] = None
+    dimensions: Optional[int] = 1024
     """The number of dimensions the resulting output embeddings should have.
-    
     Not yet supported. 
     """
     encoding_format: Literal["float", "base64"] = "float"
