@@ -19,6 +19,11 @@ def test_stream() -> None:
         if token.response_metadata:
             assert token.response_metadata["model_name"]
             assert token.response_metadata["finish_reason"]
+            if "token_usage" in token.response_metadata:
+                token_usage = token.response_metadata["token_usage"]
+                assert token_usage["completion_tokens"]
+                assert token_usage["prompt_tokens"]
+                assert token_usage["total_tokens"]
 
 
 async def test_astream() -> None:
@@ -31,6 +36,11 @@ async def test_astream() -> None:
         if token.response_metadata:
             assert token.response_metadata["model_name"]
             assert token.response_metadata["finish_reason"]
+            if "token_usage" in token.response_metadata:
+                token_usage = token.response_metadata["token_usage"]
+                assert token_usage["completion_tokens"]
+                assert token_usage["prompt_tokens"]
+                assert token_usage["total_tokens"]
 
 
 async def test_abatch() -> None:
@@ -44,6 +54,11 @@ async def test_abatch() -> None:
         if token.response_metadata:
             assert token.response_metadata["model_name"]
             assert token.response_metadata["finish_reason"]
+            if "token_usage" in token.response_metadata:
+                token_usage = token.response_metadata["token_usage"]
+                assert token_usage["completion_tokens"]
+                assert token_usage["prompt_tokens"]
+                assert token_usage["total_tokens"]
 
 
 async def test_abatch_tags() -> None:
@@ -57,6 +72,11 @@ async def test_abatch_tags() -> None:
         if token.response_metadata:
             assert token.response_metadata["model_name"]
             assert token.response_metadata["finish_reason"]
+            if "token_usage" in token.response_metadata:
+                token_usage = token.response_metadata["token_usage"]
+                assert token_usage["completion_tokens"]
+                assert token_usage["prompt_tokens"]
+                assert token_usage["total_tokens"]
 
 
 def test_batch() -> None:
@@ -70,6 +90,11 @@ def test_batch() -> None:
         if token.response_metadata:
             assert token.response_metadata["model_name"]
             assert token.response_metadata["finish_reason"]
+            if "token_usage" in token.response_metadata:
+                token_usage = token.response_metadata["token_usage"]
+                assert token_usage["completion_tokens"]
+                assert token_usage["prompt_tokens"]
+                assert token_usage["total_tokens"]
 
 
 async def test_ainvoke() -> None:
@@ -82,6 +107,11 @@ async def test_ainvoke() -> None:
     if result.response_metadata:
         assert result.response_metadata["model_name"]
         assert result.response_metadata["finish_reason"]
+        if "token_usage" in result.response_metadata:
+            token_usage = result.response_metadata["token_usage"]
+            assert token_usage["completion_tokens"]
+            assert token_usage["prompt_tokens"]
+            assert token_usage["total_tokens"]
 
 
 def test_invoke() -> None:
@@ -94,6 +124,11 @@ def test_invoke() -> None:
     if result.response_metadata:
         assert result.response_metadata["model_name"]
         assert result.response_metadata["finish_reason"]
+        if "token_usage" in result.response_metadata:
+            token_usage = result.response_metadata["token_usage"]
+            assert token_usage["completion_tokens"]
+            assert token_usage["prompt_tokens"]
+            assert token_usage["total_tokens"]
 
 
 def test_stream_error_event() -> None:
