@@ -46,7 +46,7 @@ class ChatClovaX(BaseChatOpenAI):
 
     @property
     def lc_secrets(self) -> Dict[str, str]:
-        return {"ncp_clovastudio_api_key": "CLOVASTUDIO_API_KEY"}
+        return {"api_key": "CLOVASTUDIO_API_KEY"}
 
     @classmethod
     def get_lc_namespace(cls) -> List[str]:
@@ -98,7 +98,7 @@ class ChatClovaX(BaseChatOpenAI):
     emulator."""
     openai_api_key: Optional[SecretStr] = Field(default=None)
     """openai api key is not supported for naver. 
-    use `ncp_clovastudio_api_key` instead."""
+    use `api_key` instead."""
     openai_api_base: Optional[str] = Field(default=None)
     """openai api base is not supported for naver. use `naver_api_base` instead."""
     openai_organization: Optional[str] = Field(default=None)
