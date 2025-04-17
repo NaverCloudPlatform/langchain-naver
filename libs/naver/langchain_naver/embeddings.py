@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import uuid
 import warnings
 from typing import (
     Any,
@@ -214,7 +215,7 @@ class ClovaXEmbeddings(BaseModel, Embeddings):
         response = self.client.create(
             input=text,
             **self._invocation_params,
-            extra_header={"X-NCP-CLOVASTUDIO-REQUEST-ID": f"lc-{123}"}
+            extra_headers={"X-NCP-CLOVASTUDIO-REQUEST-ID": f"lcnv-{str(uuid.uuid4())}"},
         )
 
         if not isinstance(response, dict):
@@ -248,7 +249,7 @@ class ClovaXEmbeddings(BaseModel, Embeddings):
         response = await self.async_client.create(
             input=text,
             **self._invocation_params,
-            extra_header={"X-NCP-CLOVASTUDIO-REQUEST-ID": f"lc-{123}"}
+            extra_headers={"X-NCP-CLOVASTUDIO-REQUEST-ID": f"lcnv-{str(uuid.uuid4())}"},
         )
 
         if not isinstance(response, dict):

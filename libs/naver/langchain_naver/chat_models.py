@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from typing import (
     Any,
     Dict,
@@ -164,7 +165,8 @@ class ChatClovaX(BaseChatOpenAI):
             return generate_from_stream(stream_iter)
         payload = self._get_request_payload(messages, stop=stop, **kwargs)
         response = self.client.create(
-            **payload, extra_header={"X-NCP-CLOVASTUDIO-REQUEST-ID": f"lc-{123}"}
+            **payload,
+            extra_headers={"X-NCP-CLOVASTUDIO-REQUEST-ID": f"lcnv-{str(uuid.uuid4())}"},
         )
         return self._create_chat_result(response)
 
@@ -183,7 +185,8 @@ class ChatClovaX(BaseChatOpenAI):
 
         payload = self._get_request_payload(messages, stop=stop, **kwargs)
         response = await self.async_client.create(
-            **payload, extra_header={"X-NCP-CLOVASTUDIO-REQUEST-ID": f"lc-{123}"}
+            **payload,
+            extra_headers={"X-NCP-CLOVASTUDIO-REQUEST-ID": f"lcnv-{str(uuid.uuid4())}"},
         )
         return self._create_chat_result(response)
 
