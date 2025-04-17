@@ -1,6 +1,6 @@
 [project]
 name = "langchain-naver"
-version = "0.1.0rc1"
+version = "0.1.0rc2"
 description = "An integration package connecting NaverCloud Clova Studio and LangChain"
 authors = []
 license = { text = "MIT" }
