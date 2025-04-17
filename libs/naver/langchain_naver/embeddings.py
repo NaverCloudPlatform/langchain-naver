@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 import warnings
 from typing import (
     Any,
@@ -13,7 +14,6 @@ from typing import (
     Tuple,
     Union,
 )
-import uuid
 
 import openai
 from langchain_core.embeddings import Embeddings
@@ -28,7 +28,6 @@ from pydantic import (
 from typing_extensions import Self
 
 from langchain_naver.const import USER_AGENT
-
 
 DEFAULT_EMBED_BATCH_SIZE = 10
 MAX_EMBED_BATCH_SIZE = 100

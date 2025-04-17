@@ -1,1 +1,1 @@
-USER_AGENT = "langchain_naver/0.1.0"
+USER_AGENT = "langchain_naver/0.1.0rc1"
