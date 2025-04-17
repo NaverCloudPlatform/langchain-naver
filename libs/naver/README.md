@@ -9,7 +9,7 @@ This package contains the LangChain integrations for [Naver Cloud CLOVA Studio](
 pip install -U langchain-naver
 ```
 
-- Get an Naver Cloud CLOVA Studio api key from [issuing it](https://api.ncloud-docs.com/docs/ai-naver-clovastudio-summary#API%ED%82%A4) and set it as an environment variable (`NCP_CLOVASTUDIO_API_KEY`)
+- Get an Naver Cloud CLOVA Studio api key from [issuing it](https://api.ncloud-docs.com/docs/ai-naver-clovastudio-summary#API%ED%82%A4) and set it as an environment variable (`CLOVASTUDIO_API_KEY`)
 
 ## Chat Models
 
@@ -21,5 +21,4 @@ See a [usage example](https://python.langchain.com/docs/integrations/chat/naver/
 
 See a [usage example](https://python.langchain.com/docs/integrations/text_embedding/naver)
 
-Use `clir-emb-dolphin` model for embeddings. Do not add suffixes such as `-query` or `-passage` to the model name.
-`ClovaXEmbeddings` will automatically add the suffixes based on the method called.
+Use `clir-emb-dolphin` model for embeddings.
