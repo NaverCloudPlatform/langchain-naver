@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import uuid
 import warnings
 from typing import (
     Any,
@@ -14,6 +13,7 @@ from typing import (
     Tuple,
     Union,
 )
+import uuid
 
 import openai
 from langchain_core.embeddings import Embeddings

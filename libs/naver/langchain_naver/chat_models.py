@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import uuid
 from typing import (
     Any,
     Dict,
@@ -10,6 +9,7 @@ from typing import (
     Tuple,
     Union,
 )
+import uuid
 
 import openai
 from langchain_core.callbacks import (
@@ -79,7 +79,7 @@ class ChatClovaX(BaseChatOpenAI):
         params["ls_provider"] = "naver"
         return params
 
-    model_name: str = Field(default="HCX-003", alias="model")
+    model_name: str = Field(default="HCX-005", alias="model")
     """Model name to use."""
     api_key: SecretStr = Field(
         default_factory=secret_from_env(
