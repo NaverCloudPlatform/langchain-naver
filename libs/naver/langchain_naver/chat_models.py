@@ -4,8 +4,10 @@ from typing import (
     Any,
     Dict,
     List,
+    Mapping,
     Optional,
     Tuple,
+    Union,
 )
 
 import openai
@@ -97,6 +99,9 @@ class ChatClovaX(BaseChatOpenAI):
     """Base URL path for API requests, leave blank if not using a proxy or service 
     emulator."""
     openai_api_key: Optional[SecretStr] = Field(default=None)
+    default_headers: Union[Mapping[str, str], None] = {
+        "User-Agent": "langchain-naver/0.1.0",
+    }
     """openai api key is not supported for naver. 
     use `api_key` instead."""
     openai_api_base: Optional[str] = Field(default=None)
@@ -158,7 +163,9 @@ class ChatClovaX(BaseChatOpenAI):
             )
             return generate_from_stream(stream_iter)
         payload = self._get_request_payload(messages, stop=stop, **kwargs)
-        response = self.client.create(**payload)
+        response = self.client.create(
+            **payload, extra_header={"X-NCP-CLOVASTUDIO-REQUEST-ID": f"lc-{123}"}
+        )
         return self._create_chat_result(response)
 
     async def _agenerate(
@@ -175,7 +182,9 @@ class ChatClovaX(BaseChatOpenAI):
             return await agenerate_from_stream(stream_iter)
 
         payload = self._get_request_payload(messages, stop=stop, **kwargs)
-        response = await self.async_client.create(**payload)
+        response = await self.async_client.create(
+            **payload, extra_header={"X-NCP-CLOVASTUDIO-REQUEST-ID": f"lc-{123}"}
+        )
         return self._create_chat_result(response)
 
     def _get_request_payload(

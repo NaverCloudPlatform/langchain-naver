@@ -110,7 +110,9 @@ class ClovaXEmbeddings(BaseModel, Embeddings):
     Defaults to not skipping.
     
     Not yet supported."""
-    default_headers: Union[Mapping[str, str], None] = None
+    default_headers: Union[Mapping[str, str], None] = {
+        "User-Agent": "langchain-naver/0.1.0",
+    }
     default_query: Union[Mapping[str, object], None] = None
     # Configure a custom httpx client. See the
     # [httpx documentation](https://www.python-httpx.org/api/#client) for more details.
@@ -209,7 +211,11 @@ class ClovaXEmbeddings(BaseModel, Embeddings):
         Returns:
             Embedding for the text.
         """
-        response = self.client.create(input=text, **self._invocation_params)
+        response = self.client.create(
+            input=text,
+            **self._invocation_params,
+            extra_header={"X-NCP-CLOVASTUDIO-REQUEST-ID": f"lc-{123}"}
+        )
 
         if not isinstance(response, dict):
             response = response.model_dump()
@@ -239,7 +245,11 @@ class ClovaXEmbeddings(BaseModel, Embeddings):
         Returns:
             Embedding for the text.
         """
-        response = await self.async_client.create(input=text, **self._invocation_params)
+        response = await self.async_client.create(
+            input=text,
+            **self._invocation_params,
+            extra_header={"X-NCP-CLOVASTUDIO-REQUEST-ID": f"lc-{123}"}
+        )
 
         if not isinstance(response, dict):
             response = response.model_dump()
