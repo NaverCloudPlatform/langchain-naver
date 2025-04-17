@@ -13,7 +13,7 @@ pip install -U langchain-naver
 
 ## Chat Models
 
-This package contains the `ChatClovaX` class, which is the recommended way to interface with Upstage models.
+This package contains the `ChatClovaX` class, which is the recommended way to interface with clova studio models.
 
 See a [usage example](https://python.langchain.com/docs/integrations/chat/naver/)
 

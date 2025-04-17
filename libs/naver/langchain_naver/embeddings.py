@@ -96,7 +96,7 @@ class ClovaXEmbeddings(BaseModel, Embeddings):
     request_timeout: Optional[Union[float, Tuple[float, float], Any]] = Field(
         default=None, alias="timeout"
     )
-    """Timeout for requests to Upstage embedding API. Can be float, httpx.Timeout or
+    """Timeout for requests to embedding API. Can be float, httpx.Timeout or
         None."""
     show_progress_bar: bool = False
     """Whether to show a progress bar when embedding.
