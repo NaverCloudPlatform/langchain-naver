@@ -166,7 +166,6 @@ jobs:
       - name: Run integration tests
         env:
           CLOVASTUDIO_API_KEY: ${{ secrets.CLOVASTUDIO_API_KEY }}
-          CLOVASTUDIO_API_BASE_URL: ${{ secrets.CLOVASTUDIO_API_BASE_URL }}
         run: |
           uv sync --group test --group test_integration
           make integration_tests
