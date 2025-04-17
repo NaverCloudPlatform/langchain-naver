@@ -131,6 +131,7 @@ def test_invoke() -> None:
             assert token_usage["total_tokens"]
 
 
+@pytest.mark.skip(reason="changed target model")
 def test_stream_error_event() -> None:
     """Test streaming error event from ChatClovaX."""
     llm = ChatClovaX()
@@ -141,6 +142,7 @@ def test_stream_error_event() -> None:
             pass
 
 
+@pytest.mark.skip(reason="changed target model")
 async def test_astream_error_event() -> None:
     """Test streaming error event from ChatClovaX."""
     llm = ChatClovaX()
