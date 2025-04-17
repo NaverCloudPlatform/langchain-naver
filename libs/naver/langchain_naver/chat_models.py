@@ -32,6 +32,8 @@ from langchain_openai.chat_models.base import (
 from pydantic import Field, SecretStr, model_validator
 from typing_extensions import Self
 
+from langchain_naver.const import USER_AGENT
+
 
 class ChatClovaX(BaseChatOpenAI):
     """ChatClovaX chat model.
@@ -101,7 +103,7 @@ class ChatClovaX(BaseChatOpenAI):
     emulator."""
     openai_api_key: Optional[SecretStr] = Field(default=None)
     default_headers: Union[Mapping[str, str], None] = {
-        "User-Agent": "langchain-naver/0.1.0",
+        "User-Agent": USER_AGENT,
     }
     """openai api key is not supported for naver. 
     use `api_key` instead."""

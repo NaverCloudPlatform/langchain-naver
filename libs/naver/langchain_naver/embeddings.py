@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import uuid
 import warnings
 from typing import (
@@ -28,7 +27,8 @@ from pydantic import (
 )
 from typing_extensions import Self
 
-logger = logging.getLogger(__name__)
+from langchain_naver.const import USER_AGENT
+
 
 DEFAULT_EMBED_BATCH_SIZE = 10
 MAX_EMBED_BATCH_SIZE = 100
@@ -112,7 +112,7 @@ class ClovaXEmbeddings(BaseModel, Embeddings):
     
     Not yet supported."""
     default_headers: Union[Mapping[str, str], None] = {
-        "User-Agent": "langchain-naver/0.1.0",
+        "User-Agent": USER_AGENT,
     }
     default_query: Union[Mapping[str, object], None] = None
     # Configure a custom httpx client. See the
