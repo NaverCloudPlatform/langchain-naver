@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import uuid
 from typing import (
     Any,
@@ -33,6 +34,37 @@ from pydantic import Field, SecretStr, model_validator
 from typing_extensions import Self
 
 from langchain_naver.const import USER_AGENT
+
+
+def _convert_tool_calls_argument_base_message(message: BaseMessage) -> None:
+    if message.role == "assistant":  # type: ignore[attr-defined]
+        if (tool_calls := message.tool_calls) is not None:  # type: ignore[attr-defined]
+            for raw_tool_call in tool_calls:
+                if (function_dict := raw_tool_call.function) is not None:
+                    if (arguments := function_dict.arguments) is not None:
+                        if isinstance(arguments, dict):
+                            function_dict.arguments = json.dumps(arguments)
+
+
+def _convert_tool_calls_argument_dict(message: dict) -> None:
+    if message.get("role") == "assistant":
+        if (tool_calls := message.get("tool_calls")) is not None:
+            for raw_tool_call in tool_calls:
+                if (function_dict := raw_tool_call.get("function")) is not None:
+                    if (arguments := function_dict.get("arguments")) is not None:
+                        if isinstance(arguments, dict):
+                            function_dict["arguments"] = json.dumps(arguments)
+
+
+def _convert_tool_calls(response: Union[dict, openai.BaseModel]) -> None:
+    if isinstance(response, openai.BaseModel):
+        for choice in response.choices:  # type: ignore[attr-defined]
+            if (message := choice.message) is not None:
+                _convert_tool_calls_argument_base_message(message)
+    elif isinstance(response, dict):
+        for choice in response["choices"]:
+            if (message := choice["message"]) is not None:
+                _convert_tool_calls_argument_dict(message)
 
 
 class ChatClovaX(BaseChatOpenAI):
@@ -186,6 +218,7 @@ class ChatClovaX(BaseChatOpenAI):
             **payload,
             extra_headers={"X-NCP-CLOVASTUDIO-REQUEST-ID": f"lcnv-{str(uuid.uuid4())}"},
         )
+        _convert_tool_calls(response)
         return self._create_chat_result(response)
 
     async def _agenerate(

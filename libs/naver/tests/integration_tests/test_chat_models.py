@@ -157,6 +157,27 @@ def test_invoke_with_extra_body() -> None:
             assert token_usage["total_tokens"]
 
 
+def test_bind_tools() -> None:
+    """Test function call from ChatClovaX."""
+    from pydantic import BaseModel, Field
+
+    class GetWeather(BaseModel):
+        """주어진 위치의 현재 날씨를 조회합니다."""
+
+        location: str = Field(
+            ...,
+            description="날씨를 조회하고자 하는 위치의 시도명. "
+            "예) 경기도 성남시 분당구",
+        )
+
+    llm = ChatClovaX(max_tokens=2048, top_k=5, repetition_penalty=1.0)
+    chat_with_tool = llm.bind_tools([GetWeather])
+    result = chat_with_tool.invoke("분당과 판교 중 어디가 더 덥지?")
+    assert isinstance(result, AIMessage)
+    assert isinstance(result.content, str)
+    assert isinstance(result.tool_calls, list)
+
+
 @pytest.mark.skip(reason="changed target model")
 def test_stream_error_event() -> None:
     """Test streaming error event from ChatClovaX."""
