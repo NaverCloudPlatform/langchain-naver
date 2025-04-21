@@ -12,6 +12,17 @@ on:
         type: boolean
         default: false
         description: "Release from a non-master branch (danger!)"
+  workflow_dispatch:
+    inputs:
+      working-directory:
+        required: true
+        type: string
+        default: 'libs/naver'
+      dangerous-nonmaster-release:
+        required: false
+        type: boolean
+        default: false
+        description: "Release from a non-master branch (danger!)"
 
 env:
   PYTHON_VERSION: "3.11"
