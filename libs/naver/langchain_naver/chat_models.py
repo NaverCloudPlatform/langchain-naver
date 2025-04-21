@@ -113,6 +113,14 @@ class ChatClovaX(BaseChatOpenAI):
     """openai organization is not supported for naver."""
     tiktoken_model_name: Optional[str] = None
     """tiktoken is not supported for naver."""
+    top_k: Optional[int] = Field(ge=0, le=128, default=None)
+    """생성 토큰 후보군에서 확률이 높은 K개를 후보로 지정하여 샘플링."""
+    repetition_penalty: Optional[float] = Field(gt=0.0, le=2.0, default=None)
+    """같은 토큰을 생성하는 것에 대한 패널티 정도(설정값이 높을수록 같은 결괏값을 
+    반복 생성할 확률 감소). Chat Completion v3 API에서만 사용 가능."""
+    repeat_penalty: Optional[float] = Field(gt=0.0, le=10, default=None)
+    """같은 토큰을 생성하는 것에 대한 패널티 정도(설정값이 높을수록 같은 결괏값을 
+    반복 생성할 확률 감소). Chat Completion API에서만 사용 가능."""
 
     @model_validator(mode="after")
     def validate_environment(self) -> Self:
@@ -131,6 +139,14 @@ class ChatClovaX(BaseChatOpenAI):
         }
         if self.max_retries is not None:
             client_params["max_retries"] = self.max_retries
+
+        self.extra_body = {}
+        if self.top_k is not None:
+            self.extra_body["top_k"] = self.top_k
+        if self.repetition_penalty is not None:
+            self.extra_body["repetition_penalty"] = self.repetition_penalty
+        if self.repeat_penalty is not None:
+            self.extra_body["repeat_penalty"] = self.repeat_penalty
 
         if not (self.client or None):
             sync_specific: dict = {"http_client": self.http_client}

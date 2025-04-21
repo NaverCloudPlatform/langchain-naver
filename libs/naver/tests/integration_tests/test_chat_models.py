@@ -131,6 +131,32 @@ def test_invoke() -> None:
             assert token_usage["total_tokens"]
 
 
+def test_invoke_with_extra_body() -> None:
+    messages = [
+        (
+            "system",
+            "CLOVA Studio는 HyperCLOVA X 모델을 활용하여 AI 서비스를 손쉽게 만들 수 "
+            "있는 개발 도구입니다.",
+        ),
+        (
+            "human",
+            "CLOVA Studio는 무엇인가요?",
+        ),
+    ]
+    llm = ChatClovaX(top_k=30, repetition_penalty=0.5)
+    result = llm.invoke(messages)
+    assert isinstance(result, AIMessage)
+    assert isinstance(result.content, str)
+    if result.response_metadata:
+        assert result.response_metadata["model_name"]
+        assert result.response_metadata["finish_reason"]
+        if "token_usage" in result.response_metadata:
+            token_usage = result.response_metadata["token_usage"]
+            assert token_usage["completion_tokens"]
+            assert token_usage["prompt_tokens"]
+            assert token_usage["total_tokens"]
+
+
 @pytest.mark.skip(reason="changed target model")
 def test_stream_error_event() -> None:
     """Test streaming error event from ChatClovaX."""
