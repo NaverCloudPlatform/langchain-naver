@@ -56,7 +56,7 @@ def _convert_tool_calls_argument_dict(message: dict) -> None:
                             function_dict["arguments"] = json.dumps(arguments)
 
 
-def _convert_tool_calls(response: Union[dict, openai.BaseModel]) -> None:
+def _convert_response_tool_calls(response: Union[dict, openai.BaseModel]) -> None:
     if isinstance(response, openai.BaseModel):
         for choice in response.choices:  # type: ignore[attr-defined]
             if (message := choice.message) is not None:
@@ -65,6 +65,15 @@ def _convert_tool_calls(response: Union[dict, openai.BaseModel]) -> None:
         for choice in response["choices"]:
             if (message := choice["message"]) is not None:
                 _convert_tool_calls_argument_dict(message)
+
+
+def _convert_payload_messages(payload: dict) -> None:
+    if (messages := payload.get("messages")) is None:
+        return
+
+    for message in messages:
+        if message.get("content") is None:
+            message["content"] = ""
 
 
 class ChatClovaX(BaseChatOpenAI):
@@ -214,11 +223,12 @@ class ChatClovaX(BaseChatOpenAI):
             )
             return generate_from_stream(stream_iter)
         payload = self._get_request_payload(messages, stop=stop, **kwargs)
+        _convert_payload_messages(payload)
         response = self.client.create(
             **payload,
             extra_headers={"X-NCP-CLOVASTUDIO-REQUEST-ID": f"lcnv-{str(uuid.uuid4())}"},
         )
-        _convert_tool_calls(response)
+        _convert_response_tool_calls(response)
         return self._create_chat_result(response)
 
     async def _agenerate(
@@ -235,10 +245,12 @@ class ChatClovaX(BaseChatOpenAI):
             return await agenerate_from_stream(stream_iter)
 
         payload = self._get_request_payload(messages, stop=stop, **kwargs)
+        _convert_payload_messages(payload)
         response = await self.async_client.create(
             **payload,
             extra_headers={"X-NCP-CLOVASTUDIO-REQUEST-ID": f"lcnv-{str(uuid.uuid4())}"},
         )
+        _convert_response_tool_calls(response)
         return self._create_chat_result(response)
 
     def _get_request_payload(

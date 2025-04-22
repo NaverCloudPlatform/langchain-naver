@@ -5,8 +5,18 @@ from langchain_core.messages import (
     AIMessage,
     AIMessageChunk,
 )
+from pydantic import BaseModel, Field
 
 from langchain_naver.chat_models import ChatClovaX
+
+
+class GetWeather(BaseModel):
+    """주어진 위치의 현재 날씨를 조회합니다."""
+
+    location: str = Field(
+        ...,
+        description="날씨를 조회하고자 하는 위치의 시도명. 예) 경기도 성남시 분당구",
+    )
 
 
 def test_stream() -> None:
@@ -157,25 +167,48 @@ def test_invoke_with_extra_body() -> None:
             assert token_usage["total_tokens"]
 
 
-def test_bind_tools() -> None:
+def test_invoke_bind_tools() -> None:
     """Test function call from ChatClovaX."""
-    from pydantic import BaseModel, Field
-
-    class GetWeather(BaseModel):
-        """주어진 위치의 현재 날씨를 조회합니다."""
-
-        location: str = Field(
-            ...,
-            description="날씨를 조회하고자 하는 위치의 시도명. "
-            "예) 경기도 성남시 분당구",
-        )
-
     llm = ChatClovaX(max_tokens=2048, top_k=5, repetition_penalty=1.0)
     chat_with_tool = llm.bind_tools([GetWeather])
     result = chat_with_tool.invoke("분당과 판교 중 어디가 더 덥지?")
     assert isinstance(result, AIMessage)
     assert isinstance(result.content, str)
     assert isinstance(result.tool_calls, list)
+
+
+async def test_ainvoke_bind_tools() -> None:
+    """Test function call from ChatClovaX."""
+    llm = ChatClovaX(max_tokens=2048, top_k=5, repetition_penalty=1.0)
+    chat_with_tool = llm.bind_tools([GetWeather])
+    result = await chat_with_tool.ainvoke("분당과 판교 중 어디가 더 덥지?")
+    assert isinstance(result, AIMessage)
+    assert isinstance(result.content, str)
+    assert isinstance(result.tool_calls, list)
+
+
+def test_langgraph_create_react_agent() -> None:
+    """Test LangGraph from ChatClovaX."""
+    from langgraph.prebuilt import create_react_agent
+
+    # Define tool for test
+    def get_weather(city: str) -> str:
+        """Get weather for a given city."""
+        return f"It's always sunny in {city}!"
+
+    # Define the chat model
+    chat = ChatClovaX(
+        model="HCX-005",
+        max_tokens=1024,
+        disable_streaming=True,
+    )
+
+    # Create the prebuilt react agent
+    agent = create_react_agent(
+        model=chat, tools=[get_weather], prompt="You are a helpful assistant"
+    )
+
+    agent.invoke({"messages": "what is the weather in seoul?"})
 
 
 @pytest.mark.skip(reason="changed target model")

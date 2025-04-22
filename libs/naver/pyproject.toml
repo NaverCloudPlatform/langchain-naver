@@ -23,7 +23,8 @@ test = [
     "pytest-watcher>=0.3.4",
 ]
 test-integration = [
-    { include-group = "test" }
+    { include-group = "test" },
+    "langgraph>=0.3.31",
 ]
 lint = [
     "ruff>=0.1.5,<0.2.0",
