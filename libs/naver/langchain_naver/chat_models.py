@@ -130,6 +130,11 @@ class ChatClovaX(BaseChatOpenAI):
     repeat_penalty: Optional[float] = Field(gt=0.0, le=10, default=None)
     """같은 토큰을 생성하는 것에 대한 패널티 정도(설정값이 높을수록 같은 결괏값을 
     반복 생성할 확률 감소). Chat Completion API에서만 사용 가능."""
+    max_completion_tokens: Optional[int] = Field(default=None)
+    """Maximum number of tokens to generate."""
+    thinking: Optional[Mapping[str, str]] = Field(default=None)
+    """Enable thinking mode, which allows the model to think before generating 
+    a response."""
 
     @model_validator(mode="after")
     def validate_environment(self) -> Self:
@@ -156,6 +161,10 @@ class ChatClovaX(BaseChatOpenAI):
             self.extra_body["repetition_penalty"] = self.repetition_penalty
         if self.repeat_penalty is not None:
             self.extra_body["repeat_penalty"] = self.repeat_penalty
+        if self.max_completion_tokens is not None:
+            self.extra_body["max_completion_tokens"] = self.max_completion_tokens
+        if self.thinking is not None and "effort" in self.thinking:
+            self.reasoning_effort = self.thinking["effort"]
 
         if not (self.client or None):
             sync_specific: dict = {"http_client": self.http_client}

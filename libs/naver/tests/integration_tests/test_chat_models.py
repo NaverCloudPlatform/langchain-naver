@@ -231,3 +231,67 @@ async def test_astream_error_event() -> None:
     with pytest.raises(ValueError):
         async for _ in llm.astream(prompt * 1000):
             pass
+
+
+def test_invoke_thinking() -> None:
+    llm = ChatClovaX(
+        model = "HCX-007-BETA",
+        # max_tokens = 5120,
+        max_completion_tokens = 5120, #or max_completion_tokens=5120
+        # thinking = {"effort": "none"},
+        reasoning_effort="low"
+    )
+
+    response = llm.invoke("What is the cube root of 50.653?")
+    print(response)
+    print(response.content)
+    # [
+    #     {
+    #         "thinking": "{추론 과정}",
+    #         "type": "thinking"
+    #     },
+    #     {
+    #         "text": "{최종 답변}",
+    #         "type": "text"
+    #     }
+    # ]
+    # for content in response.content:
+    #     if content["type"] == "thinking":
+    #         print(content["thinking"])
+
+    assert isinstance(response, AIMessage)
+    assert isinstance(response.content, str)
+    assert response.type == "ai"
+    if response.response_metadata:
+        assert response.response_metadata["model_name"]
+        assert response.response_metadata["finish_reason"]
+        if "token_usage" in response.response_metadata:
+            token_usage = response.response_metadata["token_usage"]
+            assert token_usage["completion_tokens"]
+            assert token_usage["prompt_tokens"]
+            assert token_usage["total_tokens"]
+            if "completion_tokens_details" in token_usage:
+                completion_tokens_details = token_usage["completion_tokens_details"]
+                assert completion_tokens_details["reasoning_tokens"] >= 0
+
+
+def test_stream_thinking() -> None:
+    """Test streaming tokens from ChatClovaX."""
+    llm = ChatClovaX(
+        model = "HCX-007-BETA",
+        # max_tokens = 5120,
+        max_completion_tokens = 5120, #or max_completion_tokens=5120
+        # thinking = {"effort": "none"},
+        reasoning_effort="low")
+
+    for token in llm.stream("What is the cube root of 50.653?"):
+        assert isinstance(token, AIMessageChunk)
+        assert isinstance(token.content, str)
+        if token.response_metadata:
+            assert token.response_metadata["model_name"]
+            assert token.response_metadata["finish_reason"]
+            if "token_usage" in token.response_metadata:
+                token_usage = token.response_metadata["token_usage"]
+                assert token_usage["completion_tokens"]
+                assert token_usage["prompt_tokens"]
+                assert token_usage["total_tokens"]
