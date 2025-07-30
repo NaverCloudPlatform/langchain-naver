@@ -236,31 +236,15 @@ async def test_astream_error_event() -> None:
 def test_invoke_thinking() -> None:
     llm = ChatClovaX(
         model = "HCX-007-BETA",
-        # max_tokens = 5120,
-        max_completion_tokens = 5120, #or max_completion_tokens=5120
-        # thinking = {"effort": "none"},
-        reasoning_effort="low"
+        max_completion_tokens = 5120, #or max_tokens=5120
+        reasoning_effort="low" #or thinking={"effort": "low"},
     )
 
     response = llm.invoke("What is the cube root of 50.653?")
-    print(response)
-    print(response.content)
-    # [
-    #     {
-    #         "thinking": "{추론 과정}",
-    #         "type": "thinking"
-    #     },
-    #     {
-    #         "text": "{최종 답변}",
-    #         "type": "text"
-    #     }
-    # ]
-    # for content in response.content:
-    #     if content["type"] == "thinking":
-    #         print(content["thinking"])
 
     assert isinstance(response, AIMessage)
     assert isinstance(response.content, str)
+    assert len(response.content) > 0
     assert response.type == "ai"
     if response.response_metadata:
         assert response.response_metadata["model_name"]
@@ -279,14 +263,14 @@ def test_stream_thinking() -> None:
     """Test streaming tokens from ChatClovaX."""
     llm = ChatClovaX(
         model = "HCX-007-BETA",
-        # max_tokens = 5120,
-        max_completion_tokens = 5120, #or max_completion_tokens=5120
-        # thinking = {"effort": "none"},
-        reasoning_effort="low")
+        max_completion_tokens = 5120, #or max_tokens=5120
+        reasoning_effort="low" #or thinking={"effort": "low"},
+    )
 
     for token in llm.stream("What is the cube root of 50.653?"):
         assert isinstance(token, AIMessageChunk)
         assert isinstance(token.content, str)
+        assert len(token.content) > 0
         if token.response_metadata:
             assert token.response_metadata["model_name"]
             assert token.response_metadata["finish_reason"]
@@ -304,9 +288,9 @@ def test_invoke_structured_output() -> None:
         followup_question: str = Field(description="A followup question the user could ask")
 
     llm = ChatClovaX(
-        model="HCX-007-BETA",
-        reasoning_effort="none",
-        max_completion_tokens=1024,
+        model = "HCX-007-BETA",
+        max_completion_tokens = 5120, #or max_tokens=5120
+        reasoning_effort="none" #or  thinking = {"effort": "none"},
     )
     # Bind the schema to the model
     model_with_structure = llm.with_structured_output(ResponseFormatter, method="json_schema")
