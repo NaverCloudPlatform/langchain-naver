@@ -295,3 +295,26 @@ def test_stream_thinking() -> None:
                 assert token_usage["completion_tokens"]
                 assert token_usage["prompt_tokens"]
                 assert token_usage["total_tokens"]
+
+def test_invoke_structured_output() -> None:
+    """Test structured output from ChatClovaX."""
+    class ResponseFormatter(BaseModel):
+        """Always use this tool to structure your response to the user."""
+        answer: str = Field(description="The answer to the user's question")
+        followup_question: str = Field(description="A followup question the user could ask")
+
+    llm = ChatClovaX(
+        model="HCX-007-BETA",
+        reasoning_effort="none",
+        max_completion_tokens=1024,
+    )
+    # Bind the schema to the model
+    model_with_structure = llm.with_structured_output(ResponseFormatter, method="json_schema")
+    # Invoke the model
+    structured_output = model_with_structure.invoke("What is the powerhouse of the cell?")
+    # Get back the pydantic object
+    print(structured_output)
+    assert isinstance(structured_output, ResponseFormatter)
+    assert len(structured_output.answer) > 0
+    assert len(structured_output.followup_question) > 0
+    # ResponseFormatter(answer="The powerhouse of the cell is the mitochondrion. Mitochondria are organelles that generate most of the cell's supply of adenosine triphosphate (ATP), which is used as a source of chemical energy.", followup_question='What is the function of ATP in the cell?')

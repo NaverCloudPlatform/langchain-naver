@@ -28,6 +28,8 @@ from langchain_core.utils import from_env, secret_from_env
 from langchain_openai.chat_models.base import (
     BaseChatOpenAI,
     _convert_message_to_dict,
+    global_ssl_context,
+    _handle_openai_bad_request,
 )
 from pydantic import Field, SecretStr, model_validator
 from typing_extensions import Self
@@ -166,16 +168,48 @@ class ChatClovaX(BaseChatOpenAI):
         if self.thinking is not None and "effort" in self.thinking:
             self.reasoning_effort = self.thinking["effort"]
 
-        if not (self.client or None):
-            sync_specific: dict = {"http_client": self.http_client}
-            self.client = openai.OpenAI(
-                **client_params, **sync_specific
-            ).chat.completions
-        if not (self.async_client or None):
-            async_specific: dict = {"http_client": self.http_async_client}
-            self.async_client = openai.AsyncOpenAI(
-                **client_params, **async_specific
-            ).chat.completions
+        if self.openai_proxy and (self.http_client or self.http_async_client):
+            openai_proxy = self.openai_proxy
+            http_client = self.http_client
+            http_async_client = self.http_async_client
+            raise ValueError(
+                "Cannot specify 'openai_proxy' if one of "
+                "'http_client'/'http_async_client' is already specified. Received:\n"
+                f"{openai_proxy=}\n{http_client=}\n{http_async_client=}"
+            )
+        if not self.client:
+            if self.openai_proxy and not self.http_client:
+                try:
+                    import httpx
+                except ImportError as e:
+                    raise ImportError(
+                        "Could not import httpx python package. "
+                        "Please install it with `pip install httpx`."
+                    ) from e
+                self.http_client = httpx.Client(
+                    proxy=self.openai_proxy, verify=global_ssl_context
+                )
+            sync_specific = {"http_client": self.http_client}
+            self.root_client = openai.OpenAI(**client_params, **sync_specific)  # type: ignore[arg-type]
+            self.client = self.root_client.chat.completions
+        if not self.async_client:
+            if self.openai_proxy and not self.http_async_client:
+                try:
+                    import httpx
+                except ImportError as e:
+                    raise ImportError(
+                        "Could not import httpx python package. "
+                        "Please install it with `pip install httpx`."
+                    ) from e
+                self.http_async_client = httpx.AsyncClient(
+                    proxy=self.openai_proxy, verify=global_ssl_context
+                )
+            async_specific = {"http_client": self.http_async_client}
+            self.root_async_client = openai.AsyncOpenAI(
+                **client_params,
+                **async_specific,  # type: ignore[arg-type]
+            )
+            self.async_client = self.root_async_client.chat.completions
         return self
 
     def _create_message_dicts(
@@ -201,10 +235,18 @@ class ChatClovaX(BaseChatOpenAI):
             return generate_from_stream(stream_iter)
         payload = self._get_request_payload(messages, stop=stop, **kwargs)
         _convert_payload_messages(payload)
-        response = self.client.create(
-            **payload,
-            extra_headers={"X-NCP-CLOVASTUDIO-REQUEST-ID": f"lcnv-{str(uuid.uuid4())}"},
-        )
+
+        if "response_format" in payload:
+            payload.pop("stream")
+            try:
+                response = self.root_client.beta.chat.completions.parse(**payload)
+            except openai.BadRequestError as e:
+                _handle_openai_bad_request(e)
+        else:
+            response = self.client.create(
+                **payload,
+                extra_headers={"X-NCP-CLOVASTUDIO-REQUEST-ID": f"lcnv-{str(uuid.uuid4())}"},
+            )
         return self._create_chat_result(response)
 
     async def _agenerate(
