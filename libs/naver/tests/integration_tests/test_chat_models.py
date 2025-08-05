@@ -8,6 +8,10 @@ from langchain_core.messages import (
 from pydantic import BaseModel, Field
 
 from langchain_naver.chat_models import ChatClovaX
+from langchain_naver.messages import (
+    ClovaXAIMessage,
+    ClovaXAIMessageChunk,
+)
 
 
 class GetWeather(BaseModel):
@@ -21,7 +25,7 @@ class GetWeather(BaseModel):
 
 def test_stream() -> None:
     """Test streaming tokens from ChatClovaX."""
-    llm = ChatClovaX()
+    llm = ChatClovaX(model = "HCX-007-BETA",)
 
     for token in llm.stream("I'm Clova"):
         assert isinstance(token, AIMessageChunk)
@@ -233,7 +237,8 @@ async def test_astream_error_event() -> None:
             pass
 
 
-def test_invoke_thinking() -> None:
+def test_invoke_reasoning() -> None:
+    """Test reasoning(thinking) from ChatClovaX."""
     llm = ChatClovaX(
         model = "HCX-007-BETA",
         max_completion_tokens = 5120, #or max_tokens=5120
@@ -243,7 +248,9 @@ def test_invoke_thinking() -> None:
     response = llm.invoke("What is the cube root of 50.653?")
 
     assert isinstance(response, AIMessage)
+    assert isinstance(response, ClovaXAIMessage)
     assert isinstance(response.content, str)
+    assert isinstance(response.reasoning_content, str)
     assert len(response.content) > 0
     assert response.type == "ai"
     if response.response_metadata:
@@ -259,18 +266,30 @@ def test_invoke_thinking() -> None:
                 assert completion_tokens_details["reasoning_tokens"] >= 0
 
 
-def test_stream_thinking() -> None:
-    """Test streaming tokens from ChatClovaX."""
+def test_stream_reasoning() -> None:
+    """Test reasoning(thinking) streaming tokens from ChatClovaX."""
     llm = ChatClovaX(
         model = "HCX-007-BETA",
         max_completion_tokens = 5120, #or max_tokens=5120
-        reasoning_effort="low" #or thinking={"effort": "low"},
+        reasoning_effort="low", #or thinking={"effort": "low"},
     )
-
-    for token in llm.stream("What is the cube root of 50.653?"):
-        assert isinstance(token, AIMessageChunk)
-        assert isinstance(token.content, str)
-        assert len(token.content) > 0
+    messages = [
+        (
+            "system",
+            "CLOVA Studio는 HyperCLOVA X 모델을 활용하여 AI 서비스를 손쉽게 만들 수 "
+            "있는 개발 도구입니다.",
+        ),
+        (
+            "human",
+            "What is the cube root of 50.653?",
+        ),
+    ]
+    for token in llm.stream(messages):
+        if isinstance(token, AIMessageChunk):
+            assert isinstance(token.content, str)
+        elif isinstance(token, ClovaXAIMessageChunk):
+            assert isinstance(token.reasoning_content, str)
+            assert token.reasoning_content
         if token.response_metadata:
             assert token.response_metadata["model_name"]
             assert token.response_metadata["finish_reason"]
@@ -297,8 +316,6 @@ def test_invoke_structured_output() -> None:
     # Invoke the model
     structured_output = model_with_structure.invoke("What is the powerhouse of the cell?")
     # Get back the pydantic object
-    print(structured_output)
     assert isinstance(structured_output, ResponseFormatter)
     assert len(structured_output.answer) > 0
     assert len(structured_output.followup_question) > 0
-    # ResponseFormatter(answer="The powerhouse of the cell is the mitochondrion. Mitochondria are organelles that generate most of the cell's supply of adenosine triphosphate (ATP), which is used as a source of chemical energy.", followup_question='What is the function of ATP in the cell?')
