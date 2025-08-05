@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from typing import (
     Any,
-    cast,
+    Callable,
     Dict,
     List,
     Mapping,
@@ -11,6 +11,7 @@ from typing import (
     Tuple,
     Type,
     Union,
+    cast,
 )
 
 import langchain_openai
@@ -30,92 +31,57 @@ from langchain_core.messages import (
     BaseMessageChunk,
 )
 from langchain_core.messages.ai import AIMessageChunk
-from langchain_core.messages.tool import tool_call_chunk
 from langchain_core.outputs import ChatResult
 from langchain_core.utils import from_env, secret_from_env
 from langchain_openai.chat_models.base import (
     BaseChatOpenAI,
-    _convert_message_to_dict,
-    global_ssl_context,
-    _handle_openai_bad_request,
-    _convert_dict_to_message,
     _convert_delta_to_message_chunk,
+    _convert_dict_to_message,
+    _convert_message_to_dict,
+    _handle_openai_bad_request,
+    global_ssl_context,
 )
 from pydantic import Field, SecretStr, model_validator
 from typing_extensions import Self
 
 from langchain_naver.const import USER_AGENT
-from langchain_naver.messages import (
-    ClovaXAIMessage,
-    ClovaXAIMessageChunk
+
+
+def decorator_convert_delta_to_message_chunk(wrapped_func: Callable) -> Callable:
+    def wrapping_func(
+        _dict: Mapping[str, Any], default_class: Type[BaseMessageChunk]
+    ) -> BaseMessageChunk:
+        role = cast(str, _dict.get("role"))
+        chunk = wrapped_func(_dict, default_class)
+        if role == "assistant" or default_class == AIMessageChunk:
+            reasoning_content = cast(str, _dict.get("reasoning_content") or "")
+            chunk.additional_kwargs["reasoning_content"] = reasoning_content
+        return chunk
+
+    return wrapping_func
+
+
+langchain_openai.chat_models.base._convert_delta_to_message_chunk = (
+    decorator_convert_delta_to_message_chunk(_convert_delta_to_message_chunk)
 )
 
 
-def decorator_convert_delta_to_message_chunk(wrapped_func):
-    def wrapping_func(
-            _dict: Mapping[str, Any], default_class: Type[BaseMessageChunk]
-    ) -> BaseMessageChunk:
-        id_ = _dict.get("id")
-        role = cast(str, _dict.get("role"))
-        content = cast(str, _dict.get("content") or "")
-        additional_kwargs: Dict = {}
-        if _dict.get("function_call"):
-            function_call = dict(_dict["function_call"])
-            if "name" in function_call and function_call["name"] is None:
-                function_call["name"] = ""
-            additional_kwargs["function_call"] = function_call
-        tool_call_chunks = []
-        if raw_tool_calls := _dict.get("tool_calls"):
-            additional_kwargs["tool_calls"] = raw_tool_calls
-            try:
-                tool_call_chunks = [
-                    tool_call_chunk(
-                        name=rtc["function"].get("name"),
-                        args=rtc["function"].get("arguments"),
-                        id=rtc.get("id"),
-                        index=rtc["index"],
-                    )
-                    for rtc in raw_tool_calls
-                ]
-            except KeyError:
-                pass
-
-        if role == "assistant" or issubclass(default_class, AIMessageChunk):
-            reasoning_content = cast(str, _dict.get("reasoning_content") or "")
-            return ClovaXAIMessageChunk(
-                content=content,
-                reasoning_content=reasoning_content,
-                additional_kwargs=additional_kwargs,
-                id=id_,
-                tool_call_chunks=tool_call_chunks,  # type: ignore[arg-type]
-            )
-        chunk = wrapped_func(_dict, default_class)
-        return chunk
-    return wrapping_func
-
-langchain_openai.chat_models.base._convert_delta_to_message_chunk \
-    = decorator_convert_delta_to_message_chunk(_convert_delta_to_message_chunk)
-
-def decorator_convert_dict_to_message(wrapped_func):
+def decorator_convert_dict_to_message(wrapped_func: Callable) -> Callable:
     def wrapping_func(_dict: Mapping[str, Any]) -> BaseMessage:
         message = wrapped_func(_dict)
         role = cast(str, _dict.get("role"))
-        if role == "assistant":
+        if "reasoning_content" in _dict and role == "assistant":
             reasoning_content = _dict.get("reasoning_content", "")
-            message = ClovaXAIMessage(
-                content=message.content,
-                reasoning_content=reasoning_content,
-                additional_kwargs=message.additional_kwargs,
-                name=message.name,
-                id=message.id,
-                tool_calls=message.tool_calls,
-                invalid_tool_calls=message.invalid_tool_calls,
-            )
+            message.additional_kwargs["reasoning_content"] = reasoning_content
         return message
+
     return wrapping_func
 
-langchain_openai.chat_models.base._convert_dict_to_message \
-    = decorator_convert_dict_to_message(_convert_dict_to_message)
+
+langchain_openai.chat_models.base._convert_dict_to_message = (
+    decorator_convert_dict_to_message(_convert_dict_to_message)
+)
+
 
 def _convert_payload_messages(payload: dict) -> None:
     if (messages := payload.get("messages")) is None:
@@ -325,7 +291,9 @@ class ChatClovaX(BaseChatOpenAI):
         else:
             response = self.client.create(
                 **payload,
-                extra_headers={"X-NCP-CLOVASTUDIO-REQUEST-ID": f"lcnv-{str(uuid.uuid4())}"},
+                extra_headers={
+                    "X-NCP-CLOVASTUDIO-REQUEST-ID": f"lcnv-{str(uuid.uuid4())}"
+                },
             )
         return self._create_chat_result(response)
 

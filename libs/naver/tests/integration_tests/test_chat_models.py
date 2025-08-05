@@ -8,10 +8,6 @@ from langchain_core.messages import (
 from pydantic import BaseModel, Field
 
 from langchain_naver.chat_models import ChatClovaX
-from langchain_naver.messages import (
-    ClovaXAIMessage,
-    ClovaXAIMessageChunk,
-)
 
 
 class GetWeather(BaseModel):
@@ -25,7 +21,7 @@ class GetWeather(BaseModel):
 
 def test_stream() -> None:
     """Test streaming tokens from ChatClovaX."""
-    llm = ChatClovaX(model = "HCX-007-BETA",)
+    llm = ChatClovaX()
 
     for token in llm.stream("I'm Clova"):
         assert isinstance(token, AIMessageChunk)
@@ -240,18 +236,17 @@ async def test_astream_error_event() -> None:
 def test_invoke_reasoning() -> None:
     """Test reasoning(thinking) from ChatClovaX."""
     llm = ChatClovaX(
-        model = "HCX-007-BETA",
-        max_completion_tokens = 5120, #or max_tokens=5120
-        reasoning_effort="low" #or thinking={"effort": "low"},
+        model="HCX-007",
+        max_completion_tokens=5120,  # or max_tokens=5120
+        reasoning_effort="low",  # or thinking={"effort": "low"},
     )
 
     response = llm.invoke("What is the cube root of 50.653?")
 
     assert isinstance(response, AIMessage)
-    assert isinstance(response, ClovaXAIMessage)
     assert isinstance(response.content, str)
-    assert isinstance(response.reasoning_content, str)
     assert len(response.content) > 0
+    assert "reasoning_content" in response.additional_kwargs
     assert response.type == "ai"
     if response.response_metadata:
         assert response.response_metadata["model_name"]
@@ -269,9 +264,9 @@ def test_invoke_reasoning() -> None:
 def test_stream_reasoning() -> None:
     """Test reasoning(thinking) streaming tokens from ChatClovaX."""
     llm = ChatClovaX(
-        model = "HCX-007-BETA",
-        max_completion_tokens = 5120, #or max_tokens=5120
-        reasoning_effort="low", #or thinking={"effort": "low"},
+        model="HCX-007",
+        max_completion_tokens=5120,  # or max_tokens=5120
+        reasoning_effort="low",  # or thinking={"effort": "low"},
     )
     messages = [
         (
@@ -287,9 +282,7 @@ def test_stream_reasoning() -> None:
     for token in llm.stream(messages):
         if isinstance(token, AIMessageChunk):
             assert isinstance(token.content, str)
-        elif isinstance(token, ClovaXAIMessageChunk):
-            assert isinstance(token.reasoning_content, str)
-            assert token.reasoning_content
+            assert "reasoning_content" in token.additional_kwargs
         if token.response_metadata:
             assert token.response_metadata["model_name"]
             assert token.response_metadata["finish_reason"]
@@ -299,22 +292,30 @@ def test_stream_reasoning() -> None:
                 assert token_usage["prompt_tokens"]
                 assert token_usage["total_tokens"]
 
+
 def test_invoke_structured_output() -> None:
     """Test structured output from ChatClovaX."""
+
     class ResponseFormatter(BaseModel):
         """Always use this tool to structure your response to the user."""
+
         answer: str = Field(description="The answer to the user's question")
-        followup_question: str = Field(description="A followup question the user could ask")
+        followup_question: str = Field(
+            description="A followup question the user could ask"
+        )
 
     llm = ChatClovaX(
-        model = "HCX-007-BETA",
-        max_completion_tokens = 5120, #or max_tokens=5120
-        reasoning_effort="none" #or  thinking = {"effort": "none"},
+        model="HCX-007",
+        max_completion_tokens=5120,  # or max_tokens=5120
+        reasoning_effort="none",  # or  thinking = {"effort": "none"},
+        disabled_params={"parallel_tool_calls": None},
     )
     # Bind the schema to the model
-    model_with_structure = llm.with_structured_output(ResponseFormatter, method="json_schema")
+    model_with_structure = llm.with_structured_output(ResponseFormatter)
     # Invoke the model
-    structured_output = model_with_structure.invoke("What is the powerhouse of the cell?")
+    structured_output = model_with_structure.invoke(
+        "What is the powerhouse of the cell?"
+    )
     # Get back the pydantic object
     assert isinstance(structured_output, ResponseFormatter)
     assert len(structured_output.answer) > 0
