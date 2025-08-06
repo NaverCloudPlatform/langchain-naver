@@ -32,6 +32,7 @@ from langchain_core.messages import (
 )
 from langchain_core.messages.ai import AIMessageChunk
 from langchain_core.outputs import ChatResult
+from langchain_core.runnables import run_in_executor
 from langchain_core.utils import from_env, secret_from_env
 from langchain_openai.chat_models.base import (
     BaseChatOpenAI,
@@ -281,19 +282,20 @@ class ChatClovaX(BaseChatOpenAI):
             return generate_from_stream(stream_iter)
         payload = self._get_request_payload(messages, stop=stop, **kwargs)
         _convert_payload_messages(payload)
-
+        extra_headers = {"X-NCP-CLOVASTUDIO-REQUEST-ID": f"lcnv-{str(uuid.uuid4())}"}
         if "response_format" in payload:
             payload.pop("stream")
             try:
-                response = self.root_client.beta.chat.completions.parse(**payload)
+                response = self.root_client.beta.chat.completions.parse(
+                    **payload,
+                    extra_headers=extra_headers,
+                )
             except openai.BadRequestError as e:
                 _handle_openai_bad_request(e)
         else:
             response = self.client.create(
                 **payload,
-                extra_headers={
-                    "X-NCP-CLOVASTUDIO-REQUEST-ID": f"lcnv-{str(uuid.uuid4())}"
-                },
+                extra_headers=extra_headers,
             )
         return self._create_chat_result(response)
 
@@ -312,11 +314,25 @@ class ChatClovaX(BaseChatOpenAI):
 
         payload = self._get_request_payload(messages, stop=stop, **kwargs)
         _convert_payload_messages(payload)
-        response = await self.async_client.create(
-            **payload,
-            extra_headers={"X-NCP-CLOVASTUDIO-REQUEST-ID": f"lcnv-{str(uuid.uuid4())}"},
+        generation_info = None
+        extra_headers = {"X-NCP-CLOVASTUDIO-REQUEST-ID": f"lcnv-{str(uuid.uuid4())}"}
+        if "response_format" in payload:
+            payload.pop("stream")
+            try:
+                response = await self.root_async_client.beta.chat.completions.parse(
+                    **payload,
+                    extra_headers=extra_headers,
+                )
+            except openai.BadRequestError as e:
+                _handle_openai_bad_request(e)
+        else:
+            response = await self.async_client.create(
+                **payload,
+                extra_headers=extra_headers,
+            )
+        return await run_in_executor(
+            None, self._create_chat_result, response, generation_info
         )
-        return self._create_chat_result(response)
 
     def _get_request_payload(
         self,

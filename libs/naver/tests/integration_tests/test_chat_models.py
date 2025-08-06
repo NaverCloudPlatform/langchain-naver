@@ -320,3 +320,49 @@ def test_invoke_structured_output() -> None:
     assert isinstance(structured_output, ResponseFormatter)
     assert len(structured_output.answer) > 0
     assert len(structured_output.followup_question) > 0
+
+
+class SimpleTest(BaseModel):
+    """Simple test model for structured output"""
+
+    message: str = Field(description="Test message")
+    success: bool = Field(description="Success status")
+
+
+async def test_ainvoke_structured_output() -> None:
+    """Test ainvoke structured output from ChatClovaX."""
+    llm = ChatClovaX(
+        model="HCX-007", thinking={"effort": "none"}, max_completion_tokens=256
+    )
+
+    model_with_structure = llm.with_structured_output(SimpleTest, method="json_schema")
+    result = await model_with_structure.ainvoke(
+        [("human", "Generate a test message. Set success to true.")]
+    )
+    assert isinstance(result, SimpleTest)
+    assert len(result.message) > 0
+    assert isinstance(result.success, bool)
+
+
+@pytest.mark.skip(reason="structured_output model known issue")
+async def test_astream_structured_output() -> None:
+    """Test astream structured output from ChatClovaX."""
+    llm = ChatClovaX(
+        model="HCX-007", thinking={"effort": "none"}, max_completion_tokens=256
+    )
+
+    model_with_structure = llm.with_structured_output(SimpleTest, method="json_schema")
+
+    async for token in model_with_structure.astream(
+        [("human", "Generate a test message. Set success to true.")]
+    ):
+        assert isinstance(token, AIMessageChunk)
+        assert isinstance(token.content, str)
+        if token.response_metadata:
+            assert token.response_metadata["model_name"]
+            assert token.response_metadata["finish_reason"]
+            if "token_usage" in token.response_metadata:
+                token_usage = token.response_metadata["token_usage"]
+                assert token_usage["completion_tokens"]
+                assert token_usage["prompt_tokens"]
+                assert token_usage["total_tokens"]
