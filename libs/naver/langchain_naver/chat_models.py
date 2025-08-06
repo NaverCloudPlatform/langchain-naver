@@ -55,7 +55,7 @@ def decorator_convert_delta_to_message_chunk(wrapped_func: Callable) -> Callable
         chunk = wrapped_func(_dict, default_class)
         if role == "assistant" or default_class == AIMessageChunk:
             reasoning_content = cast(str, _dict.get("reasoning_content") or "")
-            chunk.additional_kwargs["reasoning_content"] = reasoning_content
+            chunk.additional_kwargs["thinking_content"] = reasoning_content
         return chunk
 
     return wrapping_func
@@ -72,7 +72,7 @@ def decorator_convert_dict_to_message(wrapped_func: Callable) -> Callable:
         role = cast(str, _dict.get("role"))
         if "reasoning_content" in _dict and role == "assistant":
             reasoning_content = _dict.get("reasoning_content", "")
-            message.additional_kwargs["reasoning_content"] = reasoning_content
+            message.additional_kwargs["thinking_content"] = reasoning_content
         return message
 
     return wrapping_func

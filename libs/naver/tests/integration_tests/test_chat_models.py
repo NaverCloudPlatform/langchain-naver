@@ -246,7 +246,7 @@ def test_invoke_reasoning() -> None:
     assert isinstance(response, AIMessage)
     assert isinstance(response.content, str)
     assert len(response.content) > 0
-    assert "reasoning_content" in response.additional_kwargs
+    assert "thinking_content" in response.additional_kwargs
     assert response.type == "ai"
     if response.response_metadata:
         assert response.response_metadata["model_name"]
@@ -282,7 +282,7 @@ def test_stream_reasoning() -> None:
     for token in llm.stream(messages):
         if isinstance(token, AIMessageChunk):
             assert isinstance(token.content, str)
-            assert "reasoning_content" in token.additional_kwargs
+            assert "thinking_content" in token.additional_kwargs
         if token.response_metadata:
             assert token.response_metadata["model_name"]
             assert token.response_metadata["finish_reason"]
