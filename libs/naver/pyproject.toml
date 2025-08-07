@@ -21,6 +21,7 @@ test = [
     "pytest-asyncio>=0.21.1",
     "syrupy>=4.0.2",
     "pytest-watcher>=0.3.4",
+    "langgraph>=0.3.31",
 ]
 test-integration = [
     { include-group = "test" },

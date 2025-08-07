@@ -414,6 +414,7 @@ lint = [
     { name = "ruff" },
 ]
 test = [
+    { name = "langgraph" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-watcher" },
@@ -443,6 +444,7 @@ codespell = [{ name = "codespell", specifier = ">=2.2.0,<3.0.0" }]
 dev = [{ name = "setuptools", specifier = ">=78.1.0" }]
 lint = [{ name = "ruff", specifier = ">=0.1.5,<0.2.0" }]
 test = [
+    { name = "langgraph", specifier = ">=0.3.31" },
     { name = "pytest", specifier = ">=7.3.0" },
     { name = "pytest-asyncio", specifier = ">=0.21.1" },
     { name = "pytest-watcher", specifier = ">=0.3.4" },

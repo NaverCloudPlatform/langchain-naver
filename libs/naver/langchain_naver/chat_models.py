@@ -135,6 +135,10 @@ class ChatClovaX(BaseChatOpenAI):
         """Get the parameters used to invoke the model."""
         params = super()._get_ls_params(stop=stop, **kwargs)
         params["ls_provider"] = "naver"
+        if ls_max_tokens := params.get("max_tokens", self.max_tokens) or params.get(
+            "max_completion_tokens", self.max_tokens
+        ):
+            params["ls_max_tokens"] = ls_max_tokens  # type: ignore[typeddict-item]
         return params
 
     model_name: str = Field(default="HCX-005", alias="model")
@@ -179,7 +183,7 @@ class ChatClovaX(BaseChatOpenAI):
     repeat_penalty: Optional[float] = Field(gt=0.0, le=10, default=None)
     """같은 토큰을 생성하는 것에 대한 패널티 정도(설정값이 높을수록 같은 결괏값을 
     반복 생성할 확률 감소). Chat Completion API에서만 사용 가능."""
-    max_completion_tokens: Optional[int] = Field(default=None)
+    max_tokens: Optional[int] = Field(default=None, alias="max_completion_tokens")
     """Maximum number of tokens to generate."""
     thinking: Optional[Mapping[str, str]] = Field(default=None)
     """Enable thinking mode, which allows the model to think before generating 
@@ -210,8 +214,6 @@ class ChatClovaX(BaseChatOpenAI):
             self.extra_body["repetition_penalty"] = self.repetition_penalty
         if self.repeat_penalty is not None:
             self.extra_body["repeat_penalty"] = self.repeat_penalty
-        if self.max_completion_tokens is not None:
-            self.extra_body["max_completion_tokens"] = self.max_completion_tokens
         if self.thinking is not None and "effort" in self.thinking:
             self.reasoning_effort = self.thinking["effort"]
 
@@ -258,6 +260,15 @@ class ChatClovaX(BaseChatOpenAI):
             )
             self.async_client = self.root_async_client.chat.completions
         return self
+
+    @property
+    def _default_params(self) -> Dict[str, Any]:
+        """Get the default parameters for calling OpenAI API."""
+        params = super()._default_params
+        if "max_tokens" in params:
+            params["max_completion_tokens"] = params.pop("max_tokens")
+
+        return params
 
     def _create_message_dicts(
         self, messages: List[BaseMessage], stop: Optional[List[str]]

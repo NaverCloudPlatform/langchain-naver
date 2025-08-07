@@ -169,7 +169,7 @@ def test_invoke_with_extra_body() -> None:
 
 def test_invoke_bind_tools() -> None:
     """Test function call from ChatClovaX."""
-    llm = ChatClovaX(max_tokens=2048, top_k=5, repetition_penalty=1.0)
+    llm = ChatClovaX(max_tokens=2048, top_k=5, repetition_penalty=1.0)  # type: ignore[call-arg]
     chat_with_tool = llm.bind_tools([GetWeather])
     result = chat_with_tool.invoke("분당과 판교 중 어디가 더 덥지?")
     assert isinstance(result, AIMessage)
@@ -179,7 +179,7 @@ def test_invoke_bind_tools() -> None:
 
 async def test_ainvoke_bind_tools() -> None:
     """Test function call from ChatClovaX."""
-    llm = ChatClovaX(max_tokens=2048, top_k=5, repetition_penalty=1.0)
+    llm = ChatClovaX(max_tokens=2048, top_k=5, repetition_penalty=1.0)  # type: ignore[call-arg]
     chat_with_tool = llm.bind_tools([GetWeather])
     result = await chat_with_tool.ainvoke("분당과 판교 중 어디가 더 덥지?")
     assert isinstance(result, AIMessage)
@@ -199,7 +199,7 @@ def test_langgraph_create_react_agent() -> None:
     # Define the chat model
     chat = ChatClovaX(
         model="HCX-005",
-        max_tokens=1024,
+        max_tokens=1024,  # type: ignore[call-arg]
         disable_streaming=True,
     )
 
